@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -30,14 +29,31 @@ model Prospect {
   stage            String                @default("Cold")
   lastContactDate  DateTime?
   nextFollowUpDate DateTime?
+  deletedAt        DateTime?
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
   notes            ProspectNote[]
   checklistItems   OnboardingChecklist[]
+  auditLogs        AuditLog[]
 
   @@index([stage, createdAt])
   @@index([nextFollowUpDate])
+  @@index([deletedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  prospectId String
+  action     String
+  actorId    String
+  actorRole  String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([prospectId, createdAt])
+  @@index([action, createdAt])
 }
 
 model ProspectNote {

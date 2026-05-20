@@ -32,7 +32,8 @@ export default class MainController {
 
     async createCard(req, res, next) {
         try {
-            const card = await createCardService(req.body);
+            const payload = req.validated?.body || req.body;
+            const card = await createCardService(payload);
             res.status(201).json({ success: true, data: card });
         } catch (err) {
             next(err);
@@ -41,9 +42,10 @@ export default class MainController {
 
     async updateCard(req, res, next) {
         try {
+            const payload = req.validated?.body || req.body;
             const updated = await updateCardService(
                 req.params.id,
-                req.body
+                payload
             );
             res.status(200).json({ success: true, data: updated });
         } catch (err) {
@@ -67,9 +69,10 @@ export default class MainController {
 
     async addNote(req, res, next) {
         try {
+            const payload = req.validated?.body || req.body;
             const note = await this.repo.addNote(
                 req.params.cardId,
-                req.body.content
+                payload.content
             );
             res.status(201).json({ success: true, data: note });
         } catch (err) {
@@ -101,9 +104,10 @@ export default class MainController {
 
     async updateChecklistStatus(req, res, next) {
         try {
+            const payload = req.validated?.body || req.body;
             const item = await this.repo.updateChecklistStatus(
                 req.params.id,
-                req.body.status
+                payload.status
             );
             if (!item) {
                 return res.status(404).json({

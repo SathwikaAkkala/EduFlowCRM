@@ -1,7 +1,7 @@
 // components/kanban/KanbanBoard.tsx
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { DragDropContext, DropResult } from "@hello-pangea/dnd";
 import { KanbanColumn } from "./KanbanColumn";
 import { KanbanHeader } from "./KanbanHeader";
@@ -38,12 +38,7 @@ export function KanbanBoard({
     if (open && selectedProspect) {
       const latest = prospects.find((p) => p.id === selectedProspect.id);
       if (latest) {
-        if (
-          JSON.stringify(latest.notes) !== JSON.stringify(selectedProspect.notes) ||
-          JSON.stringify(latest.checklistItems) !== JSON.stringify(selectedProspect.checklistItems) ||
-          latest.stage !== selectedProspect.stage ||
-          latest.updatedAt !== selectedProspect.updatedAt
-        ) {
+        if (latest.updatedAt !== selectedProspect.updatedAt || latest.stage !== selectedProspect.stage) {
           updateSelected(latest);
         }
       }
@@ -63,13 +58,23 @@ export function KanbanBoard({
     await moveProspect(draggableId, newStage);
   };
 
-  const prospectsByStage = STAGE_ORDER.reduce<Record<Stage, Prospect[]>>((acc, stage) => {
-    acc[stage] = prospects.filter((p) => p.stage === stage);
-    return acc;
-  }, {} as Record<Stage, Prospect[]>);
+  const prospectsByStage = useMemo(
+    () =>
+      STAGE_ORDER.reduce<Record<Stage, Prospect[]>>((acc, stage) => {
+        acc[stage] = prospects.filter((p) => p.stage === stage);
+        return acc;
+      }, {} as Record<Stage, Prospect[]>),
+    [prospects]
+  );
 
-  const overdueProspects = prospects.filter((p) => isOverdue(p.nextFollowUpDate));
-  const dueTodayProspects = prospects.filter((p) => isDueToday(p.nextFollowUpDate));
+  const overdueProspects = useMemo(
+    () => prospects.filter((p) => p.stage !== "PILOT_CLOSED" && isOverdue(p.nextFollowUpDate)),
+    [prospects]
+  );
+  const dueTodayProspects = useMemo(
+    () => prospects.filter((p) => p.stage !== "PILOT_CLOSED" && isDueToday(p.nextFollowUpDate)),
+    [prospects]
+  );
 
   const handleCardClick = (prospect: Prospect) => {
     const latest = prospects.find((p) => p.id === prospect.id) ?? prospect;

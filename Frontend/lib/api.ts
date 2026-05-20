@@ -1,6 +1,10 @@
 // lib/api.ts — Central API client for the Express backend
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  "http://localhost:5000";
+const NORMALIZED_BACKEND_URL = BACKEND_URL.replace(/\/+$/, "");
 
 // ─── Stage Mapping ───────────────────────────────────────────────
 // Frontend uses UPPERCASE_SNAKE: "COLD", "DEMO_BOOKED", "PILOT_CLOSED"
@@ -50,11 +54,18 @@ export async function backendFetch(path: string, options: FetchOptions = {}) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BACKEND_URL}${path}`, {
-    ...rest,
-    headers,
-    credentials: "include",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${NORMALIZED_BACKEND_URL}${path}`, {
+      ...rest,
+      headers,
+      credentials: "include",
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to reach backend server";
+    throw new Error(`Backend request failed: ${message}`);
+  }
 
   return res;
 }

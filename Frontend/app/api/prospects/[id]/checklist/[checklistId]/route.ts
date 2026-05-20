@@ -18,9 +18,17 @@ export async function PATCH(
 
     const item = await prisma.onboardingChecklist.findUnique({
       where: { id: params.checklistId },
+      include: {
+        prospect: {
+          select: {
+            id: true,
+            deletedAt: true,
+          },
+        },
+      },
     });
 
-    if (!item || item.prospectId !== params.id) {
+    if (!item || item.prospectId !== params.id || item.prospect.deletedAt) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 

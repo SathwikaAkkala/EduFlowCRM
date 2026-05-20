@@ -4,14 +4,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Zap, User, Mail, Lock, ArrowRight, AlertCircle, Shield } from "lucide-react";
+import { Zap, User, Mail, Lock, ArrowRight, AlertCircle } from "lucide-react";
 
 export default function RegisterPage() {
   const { register } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("agent");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -21,7 +20,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await register(name, email, password, role);
+      await register(name, email, password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -110,25 +109,6 @@ export default function RegisterPage() {
                   minLength={6}
                   className="w-full bg-surface-3 border border-ink-5 rounded-lg pl-10 pr-4 py-2.5 text-sm text-ink-1 placeholder:text-ink-5 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition-colors"
                 />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-ink-3 uppercase tracking-wider font-mono">
-                Role
-              </label>
-              <div className="relative">
-                <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-5 pointer-events-none" />
-                <select
-                  id="register-role"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full bg-surface-3 border border-ink-5 rounded-lg pl-10 pr-4 py-2.5 text-sm text-ink-1 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition-colors appearance-none cursor-pointer"
-                >
-                  <option value="agent">Agent</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Admin</option>
-                </select>
               </div>
             </div>
 

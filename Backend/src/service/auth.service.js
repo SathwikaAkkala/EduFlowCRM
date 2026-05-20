@@ -13,6 +13,10 @@ function getJwtConfig() {
     return { JWT_SECRET, JWT_EXPIRES_IN };
 }
 
+export function assertJwtConfig() {
+    getJwtConfig();
+}
+
 function sanitizeUser(userDoc) {
     return {
         id: userDoc.id,
@@ -25,7 +29,7 @@ function sanitizeUser(userDoc) {
 }
 
 export async function registerUser(payload) {
-    const { name, email, password, role } = payload;
+    const { name, email, password } = payload;
 
     if (!name || !email || !password) {
         throw new Error("name, email and password are required");
@@ -48,7 +52,7 @@ export async function registerUser(payload) {
             name: String(name).trim(),
             email: normalizedEmail,
             password: passwordHash,
-            role: role || "agent"
+            role: "agent"
         }
     });
 

@@ -40,6 +40,8 @@ export async function POST(req: NextRequest) {
     return response;
   } catch (err) {
     console.error("Register error:", err);
-    return NextResponse.json({ error: "Registration failed" }, { status: 500 });
+    const errorMessage =
+      err instanceof Error ? err.message : "Registration failed";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

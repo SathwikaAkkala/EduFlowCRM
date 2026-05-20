@@ -27,7 +27,7 @@ export function useProspects(): UseProspectsReturn {
       const res = await fetch("/api/prospects");
       if (!res.ok) throw new Error("Failed to fetch prospects");
       const data = await res.json();
-      setProspects(data);
+      setProspects(Array.isArray(data) ? data : data.data ?? []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -96,8 +96,15 @@ export function useProspects(): UseProspectsReturn {
       body: JSON.stringify({ content }),
     });
     if (!res.ok) throw new Error("Failed to add note");
-    await fetchProspects();
-  }, [fetchProspects]);
+    const note = await res.json();
+    setProspects((prev) =>
+      prev.map((p) =>
+        p.id === prospectId
+          ? { ...p, notes: [note, ...(p.notes ?? [])], updatedAt: new Date().toISOString() }
+          : p
+      )
+    );
+  }, []);
 
   const createProspect = useCallback(async (
     data: Omit<Prospect, "id" | "createdAt" | "updatedAt" | "notes" | "checklistItems">

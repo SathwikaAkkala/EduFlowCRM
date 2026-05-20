@@ -1,4 +1,5 @@
 import {
+    assertJwtConfig,
     createAuthToken,
     loginUser,
     registerUser
@@ -17,7 +18,9 @@ function tokenCookieOptions() {
 export default class AuthController {
     async register(req, res) {
         try {
-            const user = await registerUser(req.body);
+            assertJwtConfig();
+            const payload = req.validated?.body || req.body;
+            const user = await registerUser(payload);
             const token = createAuthToken(user);
 
             res.cookie("token", token, tokenCookieOptions());
@@ -30,7 +33,8 @@ export default class AuthController {
 
     async login(req, res) {
         try {
-            const user = await loginUser(req.body);
+            const payload = req.validated?.body || req.body;
+            const user = await loginUser(payload);
             const token = createAuthToken(user);
 
             res.cookie("token", token, tokenCookieOptions());

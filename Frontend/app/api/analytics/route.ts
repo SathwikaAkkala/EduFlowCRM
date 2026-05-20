@@ -1,70 +1,80 @@
-import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { toFrontendStage } from "@/lib/api";
 import type { Stage } from "@/types";
 import { requireAuth } from "@/lib/serverAuth";
-import { isOverdueDate } from "@/lib/dateLogic";
+import { jsonWithHeaders } from "@/lib/apiResponse";
+import { applyRateLimit } from "@/lib/rateLimit";
+import { captureException, createRequestId } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const requestId = createRequestId();
   const auth = await requireAuth(["admin", "manager", "agent"]);
   if (!auth.ok) return auth.response;
+  const limiter = applyRateLimit(`analytics:get:${auth.user.id}`, 120, 60_000);
+  if (!limiter.ok) return jsonWithHeaders({ error: "Too many requests" }, { status: 429 });
 
   try {
-    const prospects: Array<{ stage: string; createdAt: Date; nextFollowUpDate: Date | null; updatedAt: Date }> =
-      await prisma.prospect.findMany({
-      select: { stage: true, createdAt: true, nextFollowUpDate: true, updatedAt: true },
-    });
-
-    const totalProspects = prospects.length;
-    const closedCount = prospects.filter((p) => p.stage === "Pilot Closed").length;
-    const overdueCount = prospects.filter(
-      (p) => p.stage !== "Pilot Closed" && isOverdueDate(p.nextFollowUpDate)
-    ).length;
     const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const closedThisMonth = prospects.filter(
-      (p) => p.stage === "Pilot Closed" && new Date(p.updatedAt) >= startOfMonth
-    ).length;
-
     const sixMonthsAgo = new Date(now);
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const monthlyBuckets = new Map<string, { year: number; month: number; count: number }>();
-    for (const p of prospects) {
-      if (new Date(p.createdAt) < sixMonthsAgo) continue;
-      const d = new Date(p.createdAt);
-      const year = d.getFullYear();
-      const month = d.getMonth() + 1;
-      const key = `${year}-${month}`;
-      const existing = monthlyBuckets.get(key) ?? { year, month, count: 0 };
-      existing.count += 1;
-      monthlyBuckets.set(key, existing);
-    }
-    const monthlyTrend = Array.from(monthlyBuckets.values()).sort((a, b) =>
-      a.year === b.year ? a.month - b.month : a.year - b.year
-    );
 
-    const grouped = new Map<Stage, { count: number; totalDays: number }>();
-    for (const p of prospects) {
-      const stage = toFrontendStage(p.stage) as Stage;
-      const curr = grouped.get(stage) ?? { count: 0, totalDays: 0 };
-      const days = Math.max(
-        0,
-        Math.floor((Date.now() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60 * 24))
-      );
-      curr.count += 1;
-      curr.totalDays += days;
-      grouped.set(stage, curr);
-    }
+    const [totalProspects, closedCount, overdueCount, closedThisMonth, stageRows, monthlyTrendRows] =
+      await Promise.all([
+        prisma.prospect.count({ where: { deletedAt: null } }),
+        prisma.prospect.count({ where: { stage: "Pilot Closed", deletedAt: null } }),
+        prisma.prospect.count({
+          where: {
+            deletedAt: null,
+            stage: { not: "Pilot Closed" },
+            nextFollowUpDate: { lt: startOfToday },
+          },
+        }),
+        prisma.prospect.count({
+          where: {
+            deletedAt: null,
+            stage: "Pilot Closed",
+            updatedAt: { gte: startOfMonth },
+          },
+        }),
+        prisma.$queryRaw<Array<{ stage: string; count: bigint | number; avgDays: number }>>`
+          SELECT
+            stage AS stage,
+            COUNT(*) AS count,
+            ROUND(AVG(TIMESTAMPDIFF(DAY, createdAt, NOW())), 1) AS avgDays
+          FROM Prospect
+          WHERE deletedAt IS NULL
+          GROUP BY stage
+          ORDER BY FIELD(stage, 'Cold', 'Contacted', 'Demo Booked', 'Demo Done', 'Proposal Sent', 'Pilot Closed')
+        `,
+        prisma.$queryRaw<Array<{ year: number; month: number; count: bigint | number }>>`
+          SELECT
+            YEAR(createdAt) AS year,
+            MONTH(createdAt) AS month,
+            COUNT(*) AS count
+          FROM Prospect
+          WHERE createdAt >= ${sixMonthsAgo} AND deletedAt IS NULL
+          GROUP BY YEAR(createdAt), MONTH(createdAt)
+          ORDER BY YEAR(createdAt), MONTH(createdAt)
+        `,
+      ]);
 
-    const stageBreakdown = Array.from(grouped.entries()).map(([stage, stats]) => ({
-      stage,
-      count: stats.count,
-      avgDays: stats.count > 0 ? Number((stats.totalDays / stats.count).toFixed(1)) : 0,
+    const stageBreakdown = stageRows.map((row) => ({
+      stage: toFrontendStage(row.stage) as Stage,
+      count: Number(row.count),
+      avgDays: Number(row.avgDays ?? 0),
     }));
 
-    return NextResponse.json({
+    const monthlyTrend = monthlyTrendRows.map((row) => ({
+      year: Number(row.year),
+      month: Number(row.month),
+      count: Number(row.count),
+    }));
+
+    return jsonWithHeaders({
       stageBreakdown,
       totalProspects,
       conversionRate: totalProspects > 0 ? Number(((closedCount / totalProspects) * 100).toFixed(1)) : 0,
@@ -74,7 +84,7 @@ export async function GET() {
       monthlyTrend,
     });
   } catch (err) {
-    console.error("GET /api/analytics error:", err);
-    return NextResponse.json({ error: "Failed to fetch analytics" }, { status: 500 });
+    captureException(err, { route: "GET /api/analytics", requestId, userId: auth.user.id });
+    return jsonWithHeaders({ error: "Failed to fetch analytics" }, { status: 500 });
   }
 }
