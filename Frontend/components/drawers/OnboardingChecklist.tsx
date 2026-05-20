@@ -1,7 +1,7 @@
 // components/drawers/OnboardingChecklist.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, Circle, Calendar, User } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import type { OnboardingChecklist as OnboardingChecklistItem } from "@/types";
@@ -9,13 +9,21 @@ import type { OnboardingChecklist as OnboardingChecklistItem } from "@/types";
 interface OnboardingChecklistProps {
   prospectId: string;
   items: OnboardingChecklistItem[];
+  canEdit?: boolean;
 }
 
-export function OnboardingChecklist({ prospectId, items }: OnboardingChecklistProps) {
+export function OnboardingChecklist({ prospectId, items, canEdit = false }: OnboardingChecklistProps) {
   const [localItems, setLocalItems] = useState(items);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocalItems(items);
+  }, [items]);
 
   const toggleStatus = async (itemId: string, currentStatus: "TODO" | "DONE") => {
+    if (!canEdit) return;
     const newStatus = currentStatus === "TODO" ? "DONE" : "TODO";
+    setError(null);
 
     // Optimistic
     setLocalItems((prev) =>
@@ -23,14 +31,16 @@ export function OnboardingChecklist({ prospectId, items }: OnboardingChecklistPr
     );
 
     try {
-      await fetch(`/api/prospects/${prospectId}/checklist/${itemId}`, {
+      const res = await fetch(`/api/prospects/${prospectId}/checklist/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
+      if (!res.ok) throw new Error("Failed to update checklist item");
     } catch {
       // Revert
       setLocalItems(items);
+      setError("Failed to save checklist update. Please try again.");
     }
   };
 
@@ -58,6 +68,12 @@ export function OnboardingChecklist({ prospectId, items }: OnboardingChecklistPr
       </div>
 
       {/* Items */}
+      {error && <p className="text-xs font-mono text-danger">{error}</p>}
+      {localItems.length !== 10 && (
+        <p className="text-xs font-mono text-warning">
+          Expected 10 onboarding steps, found {localItems.length}.
+        </p>
+      )}
       <div className="space-y-2">
         {localItems.map((item) => (
           <div
@@ -71,6 +87,7 @@ export function OnboardingChecklist({ prospectId, items }: OnboardingChecklistPr
           >
             <button
               onClick={() => toggleStatus(item.id, item.status)}
+              disabled={!canEdit}
               className="shrink-0 mt-0.5 transition-colors"
             >
               {item.status === "DONE" ? (

@@ -1,7 +1,3 @@
-// lib/onboarding.ts — DEPRECATED: Backend handles onboarding checklist creation
-// Kept for reference only. The Express backend auto-creates checklists when a card
-// moves to "Pilot Closed" stage (see Backend/src/service/card.service.js)
-
 export const ONBOARDING_STEPS = [
   { stepNumber: 1,  title: "Contract Signed",          description: "Confirm signed agreement received and filed in Google Drive shared folder.",           assignee: "Rishav Raj" },
   { stepNumber: 2,  title: "Welcome Email Sent",        description: "Send onboarding welcome email with portal credentials and onboarding timeline.",      assignee: "BD Team" },
@@ -14,3 +10,15 @@ export const ONBOARDING_STEPS = [
   { stepNumber: 9,  title: "Go-Live Date Confirmed",    description: "Confirm official go-live date with school leadership and announce via school email.",  assignee: "BD Team" },
   { stepNumber: 10, title: "30-Day Check-in Booked",    description: "Schedule 30-day adoption review call with principal to assess platform usage.",        assignee: "BD Team" },
 ];
+
+export function buildOnboardingChecklistData(prospectId: string) {
+  return ONBOARDING_STEPS.map((step, index) => ({
+    prospectId,
+    stepNumber: step.stepNumber,
+    title: step.title,
+    description: step.description,
+    assignee: step.assignee,
+    status: "todo",
+    dueDate: new Date(Date.now() + (index + 1) * 86400000),
+  }));
+}

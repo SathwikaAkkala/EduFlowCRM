@@ -1,6 +1,5 @@
 import Repositories from "../repo/cards.repo.js";
-import { updateCardService } from "../service/card.service.js";
-import { createOnboardingChecklist } from "../utils/onbord.chicklist.js";
+import { createCardService, updateCardService } from "../service/card.service.js";
 
 export default class MainController {
     constructor() {
@@ -33,10 +32,7 @@ export default class MainController {
 
     async createCard(req, res, next) {
         try {
-            const card = await this.repo.createCard(req.body);
-            if (card.stage === "Pilot Closed") {
-                await createOnboardingChecklist(card.id);
-            }
+            const card = await createCardService(req.body);
             res.status(201).json({ success: true, data: card });
         } catch (err) {
             next(err);

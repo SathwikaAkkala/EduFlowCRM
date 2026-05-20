@@ -18,6 +18,8 @@ interface Stats {
   conversionRate: number;
   overdueCount: number;
   closedCount: number;
+  closedThisMonth: number;
+  monthlyTrend: { year: number; month: number; count: number }[];
 }
 
 export function AnalyticsDashboard() {

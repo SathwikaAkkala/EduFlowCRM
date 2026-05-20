@@ -27,13 +27,14 @@ interface ProspectDrawerProps {
 export function ProspectDrawer({ open, prospect, canEdit = false, onClose, onUpdate, onDelete, onAddNote }: ProspectDrawerProps) {
   const [noteText, setNoteText] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"details" | "checklist">("details");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (!open) { setNoteText(""); setActiveTab("details"); setConfirmDelete(false); }
+    if (!open) { setNoteText(""); setActiveTab("details"); setConfirmDelete(false); setNoteError(null); }
   }, [open]);
 
   // Close on Escape
@@ -46,9 +47,12 @@ export function ProspectDrawer({ open, prospect, canEdit = false, onClose, onUpd
   const handleAddNote = async () => {
     if (!prospect || !noteText.trim()) return;
     setAddingNote(true);
+    setNoteError(null);
     try {
       await onAddNote(prospect.id, noteText.trim());
       setNoteText("");
+    } catch {
+      setNoteError("Failed to add note. Please try again.");
     } finally {
       setAddingNote(false);
     }
@@ -82,12 +86,12 @@ export function ProspectDrawer({ open, prospect, canEdit = false, onClose, onUpd
       />
 
       {/* Drawer */}
-      <div
-        className={cn(
-          "fixed right-0 top-0 h-full w-[480px] bg-surface-1 border-l border-ink-5 z-50",
-          "flex flex-col shadow-2xl transition-transform duration-300 ease-out",
-          open ? "translate-x-0" : "translate-x-full"
-        )}
+        <div
+          className={cn(
+            "fixed right-0 top-0 h-full w-[480px] bg-surface-1 border-l border-ink-5 z-50",
+            "flex flex-col shadow-2xl transition-transform duration-300 ease-out",
+            open ? "translate-x-0" : "translate-x-full"
+          )}
       >
         {/* Header */}
         <div className="flex items-start gap-3 px-5 py-4 border-b border-ink-5">
@@ -247,13 +251,16 @@ export function ProspectDrawer({ open, prospect, canEdit = false, onClose, onUpd
                     </Button>
                   </div>
                 </div>
+                {noteError && (
+                  <p className="px-3 pb-2 text-xs font-mono text-danger">{noteError}</p>
+                )}
 
                 {/* Notes list */}
                 <div className="space-y-2.5">
                   {(prospect.notes ?? []).length === 0 ? (
                     <p className="text-xs text-ink-5 font-mono text-center py-4">No notes yet</p>
                   ) : (
-                    [...(prospect.notes ?? [])].reverse().map((note) => (
+                    (prospect.notes ?? []).map((note) => (
                       <div key={note.id} className="bg-surface-2 rounded-lg border border-ink-5 p-3">
                         <p className="text-sm text-ink-2 leading-relaxed whitespace-pre-wrap">{note.content}</p>
                         <p className="text-[11px] text-ink-5 font-mono mt-2">
@@ -269,6 +276,7 @@ export function ProspectDrawer({ open, prospect, canEdit = false, onClose, onUpd
             <OnboardingChecklist
               prospectId={prospect.id}
               items={prospect.checklistItems ?? []}
+              canEdit={canEdit}
             />
           )}
         </div>

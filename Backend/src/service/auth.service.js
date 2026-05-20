@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import User from "../models/user.schema.js";
+import prisma from "../db/prismaClient.js";
 
 function getJwtConfig() {
     const JWT_SECRET = process.env.JWT_SECRET;
@@ -15,7 +15,7 @@ function getJwtConfig() {
 
 function sanitizeUser(userDoc) {
     return {
-        id: userDoc._id,
+        id: userDoc.id,
         name: userDoc.name,
         email: userDoc.email,
         role: userDoc.role,
@@ -32,7 +32,10 @@ export async function registerUser(payload) {
     }
 
     const normalizedEmail = String(email).toLowerCase().trim();
-    const exists = await User.findOne({ email: normalizedEmail });
+    const exists = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: { id: true }
+    });
 
     if (exists) {
         throw new Error("Email is already registered");
@@ -40,11 +43,13 @@ export async function registerUser(payload) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const user = await User.create({
-        name: String(name).trim(),
-        email: normalizedEmail,
-        password: passwordHash,
-        role: role || "agent"
+    const user = await prisma.user.create({
+        data: {
+            name: String(name).trim(),
+            email: normalizedEmail,
+            password: passwordHash,
+            role: role || "agent"
+        }
     });
 
     return sanitizeUser(user);
@@ -58,7 +63,9 @@ export async function loginUser(payload) {
     }
 
     const normalizedEmail = String(email).toLowerCase().trim();
-    const user = await User.findOne({ email: normalizedEmail }).select("+password");
+    const user = await prisma.user.findUnique({
+        where: { email: normalizedEmail }
+    });
 
     if (!user) {
         throw new Error("Invalid email or password");

@@ -1,8 +1,10 @@
 // app/api/prospects/[id]/route.ts — Prisma-backed single prospect endpoint
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { createOnboardingChecklist } from "../../../../../Backend/src/utils/onbord.chicklist.js";
-import { mapCardToProspect, toBackendStage, toFrontendStage } from "@/lib/api";
+import { buildOnboardingChecklistData } from "@/lib/onboarding";
+import { mapCardToProspect, toFrontendStage } from "@/lib/api";
+import { requireAuth } from "@/lib/serverAuth";
+import { validateUpdateProspect } from "@/lib/prospectValidation";
 
 function mapNote(note: any) {
   return {
@@ -32,6 +34,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth(["admin", "manager", "agent"]);
+  if (!auth.ok) return auth.response;
+
   try {
     const prospect = await prisma.prospect.findUnique({
       where: { id: params.id },
@@ -59,45 +64,38 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth(["admin", "manager"]);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
+    const validated = validateUpdateProspect(body);
+    if (!validated.ok) {
+      return NextResponse.json({ error: validated.error }, { status: 400 });
+    }
 
-    const existing = await prisma.prospect.findUnique({
-      where: { id: params.id },
-      select: { stage: true },
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.prospect.findUnique({
+        where: { id: params.id },
+        select: { stage: true },
+      });
+      if (!existing) {
+        throw new Error("NOT_FOUND");
+      }
+
+      const next = await tx.prospect.update({
+        where: { id: params.id },
+        data: validated.data,
+      });
+
+      if (existing.stage !== "Pilot Closed" && next.stage === "Pilot Closed") {
+        await tx.onboardingChecklist.createMany({
+          data: buildOnboardingChecklistData(next.id),
+          skipDuplicates: true,
+        });
+      }
+      return next;
     });
-
-    if (!existing) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    const data: Record<string, any> = {
-      name: body.name,
-      school: body.school,
-      role: body.role ?? undefined,
-      email: body.email ?? undefined,
-      phone: body.phone ?? undefined,
-      source: body.source ?? undefined,
-      lastContactDate: body.lastContactDate ? new Date(body.lastContactDate) : undefined,
-      nextFollowUpDate: body.nextFollowUpDate ? new Date(body.nextFollowUpDate) : undefined,
-    };
-
-    if (body.stage) {
-      data.stage = toBackendStage(body.stage);
-    }
-
-    for (const key of ["id", "notes", "checklistItems", "createdAt", "updatedAt"]) {
-      delete (data as any)[key];
-    }
-
-    const updated = await prisma.prospect.update({
-      where: { id: params.id },
-      data,
-    });
-
-    if (existing.stage !== "Pilot Closed" && updated.stage === "Pilot Closed") {
-      await createOnboardingChecklist(updated.id);
-    }
 
     const prospect = await prisma.prospect.findUnique({
       where: { id: params.id },
@@ -113,6 +111,9 @@ export async function PATCH(
       checklistItems: (prospect?.checklistItems || []).map(mapChecklistItem),
     });
   } catch (err) {
+    if (err instanceof Error && err.message === "NOT_FOUND") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     console.error("PATCH /api/prospects/[id] error:", err);
     return NextResponse.json({ error: "Failed to update prospect" }, { status: 500 });
   }
@@ -122,6 +123,9 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth(["admin", "manager"]);
+  if (!auth.ok) return auth.response;
+
   try {
     const existing = await prisma.prospect.findUnique({
       where: { id: params.id },

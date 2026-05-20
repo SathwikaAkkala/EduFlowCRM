@@ -1,34 +1,78 @@
-// app/api/analytics/route.ts — Proxies to backend analytics endpoint
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { backendFetch } from "@/lib/api";
+import prisma from "@/lib/prisma";
+import { toFrontendStage } from "@/lib/api";
+import type { Stage } from "@/types";
+import { requireAuth } from "@/lib/serverAuth";
+import { isOverdueDate } from "@/lib/dateLogic";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const auth = await requireAuth(["admin", "manager", "agent"]);
+  if (!auth.ok) return auth.response;
+
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
+    const prospects: Array<{ stage: string; createdAt: Date; nextFollowUpDate: Date | null; updatedAt: Date }> =
+      await prisma.prospect.findMany({
+      select: { stage: true, createdAt: true, nextFollowUpDate: true, updatedAt: true },
+    });
 
-    const res = await backendFetch("/api/analytics", { token });
+    const totalProspects = prospects.length;
+    const closedCount = prospects.filter((p) => p.stage === "Pilot Closed").length;
+    const overdueCount = prospects.filter(
+      (p) => p.stage !== "Pilot Closed" && isOverdueDate(p.nextFollowUpDate)
+    ).length;
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const closedThisMonth = prospects.filter(
+      (p) => p.stage === "Pilot Closed" && new Date(p.updatedAt) >= startOfMonth
+    ).length;
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: err.message || "Failed to fetch analytics" },
-        { status: res.status }
+    const sixMonthsAgo = new Date(now);
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const monthlyBuckets = new Map<string, { year: number; month: number; count: number }>();
+    for (const p of prospects) {
+      if (new Date(p.createdAt) < sixMonthsAgo) continue;
+      const d = new Date(p.createdAt);
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const key = `${year}-${month}`;
+      const existing = monthlyBuckets.get(key) ?? { year, month, count: 0 };
+      existing.count += 1;
+      monthlyBuckets.set(key, existing);
+    }
+    const monthlyTrend = Array.from(monthlyBuckets.values()).sort((a, b) =>
+      a.year === b.year ? a.month - b.month : a.year - b.year
+    );
+
+    const grouped = new Map<Stage, { count: number; totalDays: number }>();
+    for (const p of prospects) {
+      const stage = toFrontendStage(p.stage) as Stage;
+      const curr = grouped.get(stage) ?? { count: 0, totalDays: 0 };
+      const days = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60 * 24))
       );
+      curr.count += 1;
+      curr.totalDays += days;
+      grouped.set(stage, curr);
     }
 
-    const json = await res.json();
-    const data = json.data || json;
+    const stageBreakdown = Array.from(grouped.entries()).map(([stage, stats]) => ({
+      stage,
+      count: stats.count,
+      avgDays: stats.count > 0 ? Number((stats.totalDays / stats.count).toFixed(1)) : 0,
+    }));
 
-    // Ensure required fields exist so the frontend doesn't crash
-    if (!data.stageBreakdown) data.stageBreakdown = [];
-    if (data.totalProspects == null) data.totalProspects = 0;
-    if (data.conversionRate == null) data.conversionRate = 0;
-    if (data.overdueCount == null) data.overdueCount = 0;
-    if (data.closedCount == null) data.closedCount = 0;
-
-    return NextResponse.json(data);
+    return NextResponse.json({
+      stageBreakdown,
+      totalProspects,
+      conversionRate: totalProspects > 0 ? Number(((closedCount / totalProspects) * 100).toFixed(1)) : 0,
+      overdueCount,
+      closedCount,
+      closedThisMonth,
+      monthlyTrend,
+    });
   } catch (err) {
     console.error("GET /api/analytics error:", err);
     return NextResponse.json({ error: "Failed to fetch analytics" }, { status: 500 });

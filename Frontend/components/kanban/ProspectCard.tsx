@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { cn, daysSince, formatDate, isOverdue, isDueToday } from "@/lib/utils";
 import type { Prospect } from "@/types";
+import { STAGE_CONFIG } from "@/types";
 
 interface ProspectCardProps {
   prospect: Prospect;
@@ -52,7 +53,11 @@ export function ProspectCard({ prospect, index, onClick }: ProspectCardProps) {
               <p className="text-sm font-semibold text-ink-1 truncate leading-tight">
                 {prospect.name}
               </p>
-              <p className="text-xs text-ink-4 truncate mt-0.5">{prospect.role}</p>
+              <div className="mt-1">
+                <Badge variant="stage" stage={prospect.stage}>
+                  {STAGE_CONFIG[prospect.stage].label}
+                </Badge>
+              </div>
             </div>
           </div>
 
@@ -82,6 +87,14 @@ export function ProspectCard({ prospect, index, onClick }: ProspectCardProps) {
               </div>
             )}
           </div>
+
+          {dueToday && !overdue && (
+            <div className="mt-2">
+              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase bg-warning-muted text-warning border border-warning/30">
+                Due Today
+              </span>
+            </div>
+          )}
         </div>
       )}
     </Draggable>

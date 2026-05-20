@@ -1,11 +1,15 @@
 // app/api/prospects/[id]/notes/route.ts — Prisma-backed notes endpoint
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireAuth } from "@/lib/serverAuth";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAuth(["admin", "manager", "agent"]);
+  if (!auth.ok) return auth.response;
+
   try {
     const { content } = await req.json();
     if (!content?.trim()) {

@@ -10,7 +10,16 @@ import { useState } from "react";
 
 export default function PipelinePage() {
   const { user } = useAuth();
-  const { createProspect } = useProspects();
+  const {
+    prospects,
+    loading,
+    error,
+    createProspect,
+    moveProspect,
+    updateProspect,
+    deleteProspect,
+    addNote,
+  } = useProspects();
   const [showAddModal, setShowAddModal] = useState(false);
   const canCreate = user?.role === "admin" || user?.role === "manager";
 
@@ -20,7 +29,15 @@ export default function PipelinePage() {
         title="Sales Pipeline"
         onAddProspect={canCreate ? () => setShowAddModal(true) : undefined}
       />
-      <KanbanBoard />
+      <KanbanBoard
+        prospects={prospects}
+        loading={loading}
+        error={error}
+        moveProspect={moveProspect}
+        updateProspect={updateProspect}
+        deleteProspect={deleteProspect}
+        addNote={addNote}
+      />
       {canCreate && (
         <AddProspectModal
           open={showAddModal}

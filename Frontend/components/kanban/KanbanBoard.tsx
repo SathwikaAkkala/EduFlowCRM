@@ -5,14 +5,30 @@ import { DragDropContext, DropResult } from "@hello-pangea/dnd";
 import { KanbanColumn } from "./KanbanColumn";
 import { KanbanHeader } from "./KanbanHeader";
 import { ProspectDrawer } from "@/components/drawers/ProspectDrawer";
-import { useProspects } from "@/hooks/useProspects";
 import { useDrawer } from "@/hooks/useDrawer";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { STAGE_ORDER, type Stage, type Prospect } from "@/types";
 import { isOverdue, isDueToday } from "@/lib/utils";
 
-export function KanbanBoard() {
-  const { prospects, loading, error, moveProspect, updateProspect, deleteProspect, addNote } = useProspects();
+interface KanbanBoardProps {
+  prospects: Prospect[];
+  loading: boolean;
+  error: string | null;
+  moveProspect: (prospectId: string, newStage: Stage) => Promise<void>;
+  updateProspect: (prospectId: string, data: Partial<Prospect>) => Promise<void>;
+  deleteProspect: (prospectId: string) => Promise<void>;
+  addNote: (prospectId: string, content: string) => Promise<void>;
+}
+
+export function KanbanBoard({
+  prospects,
+  loading,
+  error,
+  moveProspect,
+  updateProspect,
+  deleteProspect,
+  addNote,
+}: KanbanBoardProps) {
   const { open, selectedProspect, openDrawer, closeDrawer, updateSelected } = useDrawer();
   const { user } = useAuth();
 

@@ -62,7 +62,7 @@ server.use((req, res) => {
 server.use((err, req, res, _next) => {
     console.error(`[ERROR] ${req.method} ${req.originalUrl}:`, err.message || err);
 
-    // Mongoose validation error
+    // Validation error
     if (err.name === "ValidationError") {
         return res.status(400).json({
             success: false,
@@ -71,7 +71,7 @@ server.use((err, req, res, _next) => {
         });
     }
 
-    // Mongoose cast error (invalid ObjectId)
+    // Invalid id format
     if (err.name === "CastError") {
         return res.status(400).json({
             success: false,

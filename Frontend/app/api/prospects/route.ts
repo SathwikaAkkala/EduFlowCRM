@@ -1,8 +1,10 @@
 // app/api/prospects/route.ts — Prisma-backed prospect collection endpoint
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { createOnboardingChecklist } from "../../../../Backend/src/utils/onbord.chicklist.js";
-import { mapCardToProspect, toBackendStage, toFrontendStage } from "@/lib/api";
+import { buildOnboardingChecklistData } from "@/lib/onboarding";
+import { mapCardToProspect, toFrontendStage } from "@/lib/api";
+import { requireAuth } from "@/lib/serverAuth";
+import { validateCreateProspect } from "@/lib/prospectValidation";
 
 function mapNote(note: any) {
   return {
@@ -29,6 +31,9 @@ function mapChecklistItem(item: any) {
 }
 
 export async function GET() {
+  const auth = await requireAuth(["admin", "manager", "agent"]);
+  if (!auth.ok) return auth.response;
+
   try {
     const prospects = await prisma.prospect.findMany({
       orderBy: { createdAt: "desc" },
@@ -54,31 +59,49 @@ export async function GET() {
     );
   } catch (err) {
     console.error("GET /api/prospects error:", err);
-    return NextResponse.json({ error: "Failed to fetch prospects" }, { status: 500 });
+    const message = err instanceof Error ? err.message : "Failed to fetch prospects";
+    const rsaHint = message.includes("allowPublicKeyRetrieval")
+      ? "Database auth failed: enable MARIADB_ALLOW_PUBLIC_KEY_RETRIEVAL=true in Backend/.env and restart dev servers."
+      : "Failed to fetch prospects";
+    return NextResponse.json({ error: rsaHint }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(["admin", "manager"]);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
-
-    const created = await prisma.prospect.create({
-      data: {
-        name: body.name,
-        school: body.school,
-        role: body.role || null,
-        email: body.email || null,
-        phone: body.phone || null,
-        source: body.source || "Direct",
-        stage: body.stage ? toBackendStage(body.stage) : "Cold",
-        lastContactDate: body.lastContactDate ? new Date(body.lastContactDate) : null,
-        nextFollowUpDate: body.nextFollowUpDate ? new Date(body.nextFollowUpDate) : null,
-      },
-    });
-
-    if (created.stage === "Pilot Closed") {
-      await createOnboardingChecklist(created.id);
+    const validated = validateCreateProspect(body);
+    if (!validated.ok) {
+      return NextResponse.json({ error: validated.error }, { status: 400 });
     }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const prospect = await tx.prospect.create({
+        data: {
+          name: validated.data.name,
+          school: validated.data.school,
+          role: validated.data.role || null,
+          email: validated.data.email,
+          phone: validated.data.phone || null,
+          source: validated.data.source,
+          stage: validated.data.stage,
+          lastContactDate: validated.data.lastContactDate,
+          nextFollowUpDate: validated.data.nextFollowUpDate,
+        },
+      });
+
+      if (prospect.stage === "Pilot Closed") {
+        await tx.onboardingChecklist.createMany({
+          data: buildOnboardingChecklistData(prospect.id),
+          skipDuplicates: true,
+        });
+      }
+
+      return prospect;
+    });
 
     const prospect = mapCardToProspect({ ...created, stage: toFrontendStage(created.stage) });
     const fullProspect = await prisma.prospect.findUnique({

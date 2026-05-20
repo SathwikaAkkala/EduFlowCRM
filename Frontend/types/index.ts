@@ -79,4 +79,6 @@ export interface AnalyticsData {
   conversionRate: number;
   overdueCount: number;
   closedThisMonth: number;
+  closedCount: number;
+  monthlyTrend: { year: number; month: number; count: number }[];
 }

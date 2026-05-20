@@ -17,13 +17,19 @@ if (!connectionString) {
 }
 
 const url = new URL(connectionString);
+const allowPublicKeyRetrieval =
+    (process.env.MARIADB_ALLOW_PUBLIC_KEY_RETRIEVAL ?? "true").toLowerCase() === "true";
+const cachingRsaPublicKey = process.env.MARIADB_CACHING_RSA_PUBLIC_KEY?.trim() || undefined;
+
 const adapter = new PrismaMariaDb({
     host: url.hostname,
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
     database: url.pathname.replace(/^\//, ""),
-    connectionLimit: 5
+    connectionLimit: 5,
+    allowPublicKeyRetrieval,
+    ...(cachingRsaPublicKey ? { cachingRsaPublicKey } : {})
 });
 
 const globalForPrisma = globalThis;

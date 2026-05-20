@@ -334,8 +334,7 @@ Before running this project, ensure you have the following installed:
 |---|---|---|
 | Node.js | 18.x | `node --version` |
 | npm | 9.x | `npm --version` |
-| Database (V1) | MongoDB 6.x or Atlas | — |
-| Database (V2) | MySQL or MariaDB | `mysql --version` |
+| MongoDB | 6.x (local) or Atlas — optional if using Prisma/MySQL | — |`r`n| MySQL / MariaDB | 10.x / 10.5+ (for Prisma) — optional | — |
 | Git | Any | `git --version` |
 
 > **Database Setup**: 
@@ -346,27 +345,25 @@ Before running this project, ensure you have the following installed:
 
 ## 9. Environment Variables
 
-### Backend — `Backend/src/.env`
+### Backend — `Backend/.env`
 
-Create this file by copying the example:
+Create this file by copying the example shipped at the repository root of the backend:
 
 ```bash
-cp Backend/src/.env.example Backend/src/.env
+cp Backend/.env.example Backend/.env
 ```
 
-Then fill in each value:
+Then fill in each value. The project supports both the original MongoDB connection string and a Prisma `DATABASE_URL` for MySQL/MariaDB.
 
 ```env
+# Use for Prisma / MySQL (example):
+DATABASE_URL="mysql://root:password@127.0.0.1:3306/kalnet_crm"
+
+# Original MongoDB variable (kept for backward compatibility):
+MONGODB_CONNECTION_STRING=mongodb://localhost:27017/kalnet-crm
+
 # Server
 PORT=6060
-
-# Database (Version 1 - MongoDB)
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/kalnet-crm
-# For MongoDB Atlas:
-# MONGODB_CONNECTION_STRING=mongodb+srv://<user>:<password>@cluster.mongodb.net/kalnet-crm?retryWrites=true&w=majority
-
-# Database (Version 2 - Prisma/MySQL)
-DATABASE_URL="mysql://root:password@localhost:3306/kalnet_crm"
 
 # Authentication
 JWT_SECRET=your-very-long-random-secret-at-least-64-characters
@@ -426,8 +423,8 @@ npm install
 ### 3. Configure Backend environment
 
 ```bash
-cp src/.env.example src/.env
-# Edit src/.env and fill in all required values
+cp Backend/.env.example Backend/.env
+# Edit Backend/.env and fill in all required values
 ```
 
 ### 4. Install Frontend dependencies
@@ -460,7 +457,7 @@ npm run dev
 Expected output:
 ```
 [nodemon] starting `node server.js`
-MongoDB connected
+Database connected
 Server running on port 6060
 ```
 

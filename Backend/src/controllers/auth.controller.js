@@ -3,7 +3,7 @@ import {
     loginUser,
     registerUser
 } from "../service/auth.service.js";
-import User from "../models/user.schema.js";
+import prisma from "../db/prismaClient.js";
 
 function tokenCookieOptions() {
     return {
@@ -68,24 +68,29 @@ export default class AuthController {
                 });
             }
 
-            const user = await User.findByIdAndUpdate(
-                id,
-                { $set: { role } },
-                { returnDocument: 'after', runValidators: true }
-            ).select("-password");
+            const existingUser = await prisma.user.findUnique({
+                where: { id },
+                select: { id: true }
+            });
 
-            if (!user) {
+            if (!existingUser) {
                 return res.status(404).json({ success: false, message: "User not found" });
             }
 
+            const user = await prisma.user.update({
+                where: { id },
+                data: { role },
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true
+                }
+            });
+
             return res.status(200).json({
                 success: true,
-                data: {
-                    id: user._id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                }
+                data: user
             });
         } catch (error) {
             return res.status(500).json({ success: false, message: error.message });
@@ -95,20 +100,18 @@ export default class AuthController {
     // Admin-only: list all users
     async listUsers(req, res) {
         try {
-            const users = await User.find()
-                .select("-password")
-                .sort({ createdAt: -1 })
-                .lean();
+            const users = await prisma.user.findMany({
+                orderBy: { createdAt: "desc" },
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                    createdAt: true
+                }
+            });
 
-            const sanitized = users.map((u) => ({
-                id: u._id,
-                name: u.name,
-                email: u.email,
-                role: u.role,
-                createdAt: u.createdAt,
-            }));
-
-            return res.status(200).json({ success: true, data: sanitized });
+            return res.status(200).json({ success: true, data: users });
         } catch (error) {
             return res.status(500).json({ success: false, message: error.message });
         }

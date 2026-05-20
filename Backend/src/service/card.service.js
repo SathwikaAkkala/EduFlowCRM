@@ -1,14 +1,58 @@
 import prisma from "../db/prismaClient.js";
-import { createOnboardingChecklist } from "../utils/onbord.chicklist.js";
+
+function buildChecklistData(prospectId) {
+    const steps = [
+        "School KYC completed",
+        "Admin account created",
+        "Teachers onboarded",
+        "Student data uploaded",
+        "Class structure setup",
+        "Fee module configured",
+        "Attendance module enabled",
+        "Timetable created",
+        "Training session completed",
+        "Go-live confirmation"
+    ];
+
+    return steps.map((title, index) => ({
+        prospectId,
+        stepNumber: index + 1,
+        title,
+        description: title,
+        assignee: "KALNET Ops",
+        status: "todo",
+        dueDate: new Date(Date.now() + (index + 1) * 86400000)
+    }));
+}
+
+export const createCardService = async (payload) => {
+    return prisma.$transaction(async (tx) => {
+        const created = await tx.prospect.create({
+            data: {
+                name: payload.name,
+                school: payload.school,
+                role: payload.role || null,
+                email: payload.email || null,
+                phone: payload.phone || null,
+                source: payload.source || "Direct",
+                stage: payload.stage || "Cold",
+                lastContactDate: payload.lastContactDate ? new Date(payload.lastContactDate) : null,
+                nextFollowUpDate: payload.nextFollowUpDate ? new Date(payload.nextFollowUpDate) : null
+            }
+        });
+
+        if (created.stage === "Pilot Closed") {
+            await tx.onboardingChecklist.createMany({
+                data: buildChecklistData(created.id),
+                skipDuplicates: true
+            });
+        }
+
+        return created;
+    });
+};
 
 export const updateCardService = async (cardId, payload) => {
-    const existing = await prisma.prospect.findUnique({
-        where: { id: cardId }
-    });
-    if (!existing) throw new Error("Card not found");
-
-    const previousStage = existing.stage;
-
     const data = {
         ...payload
     };
@@ -21,17 +65,24 @@ export const updateCardService = async (cardId, payload) => {
         data.nextFollowUpDate = data.nextFollowUpDate ? new Date(data.nextFollowUpDate) : null;
     }
 
-    const updated = await prisma.prospect.update({
-        where: { id: cardId },
-        data
+    return prisma.$transaction(async (tx) => {
+        const existing = await tx.prospect.findUnique({
+            where: { id: cardId }
+        });
+        if (!existing) throw new Error("Card not found");
+
+        const updated = await tx.prospect.update({
+            where: { id: cardId },
+            data
+        });
+
+        if (existing.stage !== "Pilot Closed" && updated.stage === "Pilot Closed") {
+            await tx.onboardingChecklist.createMany({
+                data: buildChecklistData(updated.id),
+                skipDuplicates: true
+            });
+        }
+
+        return updated;
     });
-
-    if (
-        previousStage !== "Pilot Closed" &&
-        updated.stage === "Pilot Closed"
-    ) {
-        await createOnboardingChecklist(updated.id);
-    }
-
-    return updated;
 };

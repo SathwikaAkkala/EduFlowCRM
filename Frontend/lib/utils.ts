@@ -1,15 +1,15 @@
 // lib/utils.ts
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { differenceInDays, format, isAfter, isBefore, startOfDay } from "date-fns";
+import { differenceInDays, format, isBefore, startOfDay } from "date-fns";
+import { isOverdueDate } from "@/lib/dateLogic";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 export function isOverdue(nextFollowUpDate: string | null | undefined): boolean {
-  if (!nextFollowUpDate) return false;
-  return isBefore(new Date(nextFollowUpDate), startOfDay(new Date()));
+  return isOverdueDate(nextFollowUpDate);
 }
 
 export function isDueToday(nextFollowUpDate: string | null | undefined): boolean {
