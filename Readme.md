@@ -27,7 +27,6 @@
 19. [Common Issues & Troubleshooting](#19-common-issues--troubleshooting)
 20. [Contributing](#20-contributing)
 
-
 ---
 
 ## 1. Project Overview
@@ -37,8 +36,11 @@ KALNET CRM is a purpose-built Customer Relationship Management system designed f
 - Track school prospects through a **6-stage Kanban pipeline**
 - Log time-stamped **notes** on each prospect
 - Manage a **10-step onboarding checklist** per school (automatically generated on prospect creation)
+- Track **Auto-Completion Status** dynamically when all checklist steps are completed
+- Receive **Automated Daily Notifications** (via Email and In-App notification bell) for overdue prospects
 - View **real-time analytics** — stage breakdowns, conversion rates, overdue follow-ups, and monthly trends
 - Control team access through a **role-based permission model** (Admin / Manager / Agent)
+- Monitor application integrity via integrated **Sentry Error Tracking**
 
 The system follows a **decoupled architecture**: a Node.js/Express REST API backend stores all data in MySQL/MariaDB through Prisma, while a Next.js 14 frontend communicates with that API both server-side (via Next.js API route proxies) and client-side.
 
@@ -51,30 +53,17 @@ The system follows a **decoupled architecture**: a Node.js/Express REST API back
 | Layer | Technology | Version |
 |---|---|---|
 | Runtime | Node.js (ES Modules) | ≥ 18.x |
-| Framework | Express | 5.x |
+| Framework | Express | 5.2.x |
 | Database | MySQL / MariaDB | 10.x / 10.5+ |
+| DB Driver / Adapter | mariadb + @prisma/adapter-mariadb | 3.5.x / 7.8.x |
 | ORM | Prisma | 7.8.x |
 | Authentication | JSON Web Tokens (JWT) | 9.x |
 | Password Hashing | bcrypt | 6.x |
 | Input Validation | Zod | 4.x |
 | Rate Limiting | express-rate-limit | 8.x |
-| Cookie Parsing | cookie-parser | 1.x |
-| CORS | cors | 2.x |
-| Dev Server | nodemon | 3.x |
-| Environment | dotenv | 17.x |
-
-### Backend - Version 2 (Current)
-
-| Layer | Technology | Version |
-|---|---|---|
-| Runtime | Node.js (ES Modules) | ≥ 18.x |
-| Framework | Express | 5.x |
-| Database | MySQL / MariaDB | 3.5.x |
-| ORM | Prisma | 7.8.x |
-| Authentication | JSON Web Tokens (JWT) | 9.x |
-| Password Hashing | bcrypt | 6.x |
-| Input Validation | Zod | 4.x |
-| Rate Limiting | express-rate-limit | 8.x |
+| Email Service | nodemailer | 8.0.x |
+| Automation Scheduler | node-cron | 4.2.x |
+| Error Monitoring | @sentry/node | 8.15.x |
 | Cookie Parsing | cookie-parser | 1.x |
 | CORS | cors | 2.x |
 | Dev Server | nodemon | 3.x |
@@ -91,6 +80,9 @@ The system follows a **decoupled architecture**: a Node.js/Express REST API back
 | Icons | lucide-react | 0.376.x |
 | Date Utilities | date-fns | 3.x |
 | Class Utilities | clsx + tailwind-merge | latest |
+| Database Client (Direct SSR routes) | Prisma Client | 7.8.x |
+| Input Validation | Zod | 4.x |
+| Testing | Vitest | 3.2.x |
 
 ---
 
@@ -101,39 +93,33 @@ The system follows a **decoupled architecture**: a Node.js/Express REST API back
 │                    Browser / Client                       │
 │                                                          │
 │   Next.js 14 App (Port 3000)                            │
-│   ├── /login          ← Public page                     │
-│   ├── /register       ← Public page                     │
-│   ├── / (dashboard)   ← Kanban Board (protected)        │
-│   ├── /admin/crm/analytics ← Analytics (protected)      │
-│   └── /settings       ← Settings (protected)            │
+│   ├── /login                 ← Public page              │
+│   ├── /register              ← Public page              │
+│   ├── / (dashboard)          ← Kanban Board (protected) │
+│   ├── /notifications         ← Notifications Center     │
+│   ├── /admin/crm/analytics   ← Analytics (protected)    │
+│   └── /settings              ← Settings (protected)     │
 │                                                          │
 │   Next.js API Routes (/app/api/*)                        │
 │   └── Proxy layer → forwards requests to Express API    │
+│       (Also accesses database directly via Prisma Client)│
 └──────────────────────┬───────────────────────────────────┘
-                       │ HTTP (cookie-based JWT)
+                       │ HTTP (cookie-based JWT / Bearer)
                        ▼
 ┌──────────────────────────────────────────────────────────┐
 │               Express API Server (Port 6060)              │
-│                                                          │
-│   POST /api/auth/register                                │
-│   POST /api/auth/login                                   │
-│   GET  /api/auth/me                                      │
-│   POST /api/auth/logout                                  │
-│   GET  /api/auth/users          ← Admin only             │
-│   PATCH /api/auth/users/:id/role ← Admin only            │
-│                                                          │
-│   GET/POST /api/cards           ← Prospects CRUD         │
-│   GET/PATCH/DELETE /api/cards/:id                        │
-│   GET/POST /api/cards/:id/notes                          │
-│   GET      /api/cards/:id/checklist                      │
-│   PATCH    /api/checklist/:id                            │
-│   GET      /api/analytics                                │
+│   ├── Auth routes (/api/auth)                            │
+│   ├── Cards / Notes / Checklist CRUD (/api)              │
+│   ├── Notifications Management (/api/notifications)       │
+│   ├── Debug and Test Endpoints (/api/debug)              │
+│   └── Node-Cron Scheduler (Runs daily checks at 9 AM)    │
 └──────────────────────┬───────────────────────────────────┘
-                       │ Mongoose ODM
+                       │ Prisma Client (MariaDB Adapter)
                        ▼
 ┌──────────────────────────────────────────────────────────┐
-│                Database (Current Project)                 │
+│                Database (Active Project)                 │
 │         MySQL / MariaDB via Prisma ORM                    │
+│   (User, Prospect, AuditLog, Note, Checklist, NotifLog)  │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -146,62 +132,61 @@ The Next.js frontend **never exposes the backend URL to the browser directly** f
 ```
 project-root/
 ├── Backend/
-│   ├── index.js                  ← Express app factory (middleware + routes)
-│   ├── server.js                 ← Entry point (starts server)
+│   ├── index.js                     ← Express app factory (middleware + routes + Sentry init)
+│   ├── server.js                    ← Entry point (starts server, registers global crash listeners)
 │   ├── package.json
-│   ├── prisma/                   ← Version 2 Database ORM
-│   │   └── schema.prisma         ← Prisma models (User, Prospect, etc.)
+│   ├── prisma/                      ← Database Migrations & Seeds
+│   │   ├── schema.prisma            ← Prisma schema models (User, Prospect, AuditLog, etc.)
+│   │   └── seed.ts                  ← Idempotent DB seeder
 │   └── src/
-│       ├── .env                  ← Runtime secrets (never commit this)
-│       ├── .env.example          ← Template for environment variables
-│       ├── config/
-│       │   └── mondodb.config.js ← Version 1 Mongoose connection setup
+│       ├── .env                     ← Runtime secrets (never commit this)
+│       ├── .env.example             ← Template for environment variables
 │       ├── db/
-│       │   └── prismaClient.js   ← Version 2 Prisma client instantiation
+│       │   └── prismaClient.js      ← Connection client singleton (allowPublicKeyRetrieval guard)
 │       ├── controllers/
-│       │   ├── auth.controller.js    ← register, login, me, logout, user mgmt
-│       │   ├── main.controller.js    ← cards, notes, checklist CRUD
-│       │   └── analytics.controller.js ← aggregated stats endpoint
+│       │   ├── auth.controller.js       ← register, login, me, logout, user management
+│       │   ├── main.controller.js       ← cards, notes, checklist CRUD
+│       │   ├── notification.controller.js ← fetch/read notifications, manual triggers
+│       │   └── debug.controller.js      ← test email, debug status dashboard
 │       ├── middleware/
-│       │   ├── auth.middleware.js    ← requireAuth + authorizeRoles guards
-│       │   └── validate.middleware.js ← Zod request validation wrapper
-│       ├── models/                 ← Version 1 Mongoose schemas
-│       │   ├── user.schema.js        
-│       │   ├── card.schema.js        
-│       │   ├── notes.schema.js       
-│       │   └── checklist.schema.js   
+│       │   ├── auth.middleware.js       ← requireAuth + authorizeRoles guards
+│       │   └── validate.middleware.js   ← Zod request validation wrapper
 │       ├── repo/
-│       │   ├── cards.repo.js         ← Data access layer (Prisma in V2)
-│       │   └── analytics.repo.js     ← Aggregations (Prisma raw SQL in V2)
+│       │   ├── cards.repo.js            ← Data access layer (Prisma)
+│       │   └── analytics.repo.js        ← Aggregations (Prisma raw SQL)
 │       ├── routers/
-│       │   ├── auth.routes.js        ← Auth route definitions
-│       │   └── main.routs.js         ← Cards / notes / checklist / analytics routes
+│       │   ├── auth.routes.js           ← Auth route definitions
+│       │   ├── main.routs.js            ← Cards / notes / checklist routes
+│       │   ├── notification.routes.js    ← Notification endpoints
+│       │   └── debug.routes.js          ← System status & testing routes
 │       ├── service/
-│       │   ├── auth.service.js       ← registerUser, loginUser, createAuthToken
-│       │   └── card.service.js       ← Business logic for card operations
-│       ├── utils/
-│       │   └── onbord.chicklist.js   ← Auto-generates 10 checklist steps on card create
-│       └── validation/
-│           ├── auth.validation.js    ← Zod schemas for auth request bodies
-│           └── main.validation.js    ← Zod schemas for card / note / checklist bodies
+│       │   ├── auth.service.js          ← registerUser, loginUser, createAuthToken
+│       │   ├── card.service.js          ← Card business logic (triggers checklist transaction)
+│       │   ├── completion.service.js    ← Auto-completion status verifier
+│       │   ├── email.service.js         ← Nodemailer SMTP configuration and HTML templates
+│       │   └── notification.service.js  ← Overdue query logic, user notification loop
+│       └── utils/
+│           ├── onbord.chicklist.js      ← Auto-generates 10 checklist steps on card create
+│           └── scheduler.js             ← node-cron background task initializer
 │
 └── Frontend/
     ├── next.config.js
     ├── tailwind.config.ts
     ├── tsconfig.json
-    ├── .env.local                ← Frontend environment (NEXT_PUBLIC_BACKEND_URL)
+    ├── .env.local                   ← Frontend environment (NEXT_PUBLIC_BACKEND_URL=6060)
     ├── package.json
     ├── app/
-    │   ├── layout.tsx            ← Root layout (fonts, global CSS)
-    │   ├── globals.css           ← Tailwind base styles
-    │   ├── login/page.tsx        ← Login page
-    │   ├── register/page.tsx     ← Registration page
+    │   ├── layout.tsx               ← Root layout (fonts, global CSS)
+    │   ├── globals.css              ← Tailwind base styles
+    │   ├── login/page.tsx           ← Login page
+    │   ├── register/page.tsx        ← Registration page
     │   ├── (dashboard)/
-    │   │   ├── layout.tsx        ← Dashboard shell (Sidebar + Topbar)
-    │   │   ├── page.tsx          ← Kanban Board page
-    │   │   ├── settings/page.tsx ← Settings page
+    │   │   ├── layout.tsx           ← Dashboard shell (Sidebar + Topbar)
+    │   │   ├── page.tsx             ← Kanban Board page
+    │   │   ├── settings/page.tsx    ← Settings page
+    │   │   ├── notifications/page.tsx ← In-App Notifications Center
     │   │   └── admin/crm/analytics/page.tsx ← Analytics page
-    │   └── api/                  ← Next.js proxy routes → Express backend
+    │   └── api/                     ← Next.js API route proxies
     │       ├── auth/login/route.ts
     │       ├── auth/logout/route.ts
     │       ├── auth/me/route.ts
@@ -211,29 +196,30 @@ project-root/
     │       ├── prospects/[id]/route.ts
     │       ├── prospects/[id]/notes/route.ts
     │       └── prospects/[id]/checklist/[checklistId]/route.ts
-    └── components/
-        ├── analytics/
-        │   └── AnalyticsDashboard.tsx  ← Stats cards + stage breakdown table
-        ├── drawers/
-        │   ├── ProspectDrawer.tsx       ← Side panel: prospect detail, notes, checklist
-        │   └── OnboardingChecklist.tsx  ← 10-step checklist UI
-        ├── kanban/
-        │   ├── KanbanBoard.tsx          ← DnD context, stage grouping, overdue logic
-        │   ├── KanbanColumn.tsx         ← Single pipeline column
-        │   ├── KanbanHeader.tsx         ← Board toolbar (search, add prospect)
-        │   └── ProspectCard.tsx         ← Draggable card tile
-        ├── layout/
-        │   ├── Sidebar.tsx              ← Navigation sidebar
-        │   └── Topbar.tsx               ← Top bar (user info, logout)
-        ├── modals/
-        │   └── AddProspectModal.tsx     ← Create/edit prospect form modal
-        ├── providers/
-        │   └── AuthProvider.tsx         ← React context for auth state
-        └── ui/
-            ├── Avatar.tsx
-            ├── Badge.tsx
-            ├── Button.tsx
-            └── Input.tsx
+    ├── components/
+    │   ├── analytics/
+    │   │   └── AnalyticsDashboard.tsx    ← Stats cards + stage breakdown table
+    │   ├── drawers/
+    │   │   ├── ProspectDrawer.tsx        ← Side panel: prospect detail, notes, checklist
+    │   │   └── OnboardingChecklist.tsx    ← 10-step checklist UI
+    │   ├── kanban/
+    │   │   ├── KanbanBoard.tsx           ← DnD context, stage grouping, overdue logic
+    │   │   ├── KanbanColumn.tsx          ← Single pipeline column
+    │   │   ├── KanbanHeader.tsx          ← Board toolbar (search, add prospect)
+    │   │   └── ProspectCard.tsx          ← Draggable card tile (complete status badge)
+    │   ├── layout/
+    │   │   ├── Sidebar.tsx               ← Navigation sidebar
+    │   │   ├── Topbar.tsx                ← Top bar (integrated Notification Bell dropdown)
+    │   │   └── NotificationBell.tsx      ← Red badge unread counter dropdown
+    │   └── modals/
+    │       └── AddProspectModal.tsx      ← Create/edit prospect form modal
+    ├── hooks/
+    │   └── useNotifications.ts           ← React hook for notifications fetching & read toggles
+    ├── lib/
+    │   ├── prisma.ts                     ← Next.js Server-only Prisma client instance
+    │   └── api.ts                        ← Frontend API models mapper
+    └── types/
+        └── index.ts                      ← Frontend Typescript interfaces
 ```
 
 ---
@@ -241,50 +227,65 @@ project-root/
 ## 5. Features
 
 ### Prospect Management
-- Create, view, update, and delete school prospects (cards)
-- Each prospect stores: name, school, role, email, phone, source, pipeline stage, last contact date, and next follow-up date
-- Paginated listing with stage-based filtering
+- Create, view, update, and delete school prospects (cards).
+- Each prospect stores: name, school, role, email, phone, source, pipeline stage, last contact date, next follow-up date, and completion status.
+- Paginated listing with stage-based filtering.
 
 ### Kanban Pipeline Board
-- Drag-and-drop prospects between pipeline stages (admin and manager only)
-- Overdue follow-up highlighting — prospects past their `nextFollowUpDate` are flagged
-- "Due today" indicator for prospects needing contact on the current day
-- Agents have read-only access; they can view but cannot move or edit cards
+- Drag-and-drop prospects between pipeline stages (admin and manager only).
+- Overdue follow-up highlighting — prospects past their `nextFollowUpDate` are flagged.
+- "Due today" indicator for prospects needing contact on the current day.
+- Agents have read-only access; they can view but cannot move or edit cards.
 
 ### Prospect Detail Drawer
-- Click any card to open a slide-in drawer showing full prospect details
-- Edit all fields inline (admin/manager only)
-- View and add time-stamped notes
-- View and update the onboarding checklist
+- Click any card to open a slide-in drawer showing full prospect details.
+- Edit all fields inline (admin/manager only).
+- View and add time-stamped progress notes.
+- View and update the onboarding checklist.
 
 ### Notes System
-- Paginated, append-only log of notes per prospect
-- Notes display with timestamp and are ordered newest-first
+- Paginated, append-only log of notes per prospect.
+- Notes display with timestamp and are ordered newest-first.
 
 ### Onboarding Checklist
-- A 10-step checklist is automatically created for every new prospect
-- Steps are assigned with rolling due dates (1 day apart, starting from creation)
-- Admin and manager can mark steps as `todo` or `done`
-- Steps cover the full school onboarding lifecycle (KYC → Go-live)
+- A 10-step checklist is automatically created for every new prospect.
+- Steps are assigned with rolling due dates (1 day apart, starting from creation).
+- Admin and manager can mark steps as `todo` or `done`.
+- Steps cover the full school onboarding lifecycle (KYC → Go-live).
+
+### Dynamic Auto-Completion Tracking ⭐ (New)
+- **Automatic Status Toggle**: When the 10th (last) onboarding checklist item is marked completed, the backend transaction automatically sets `completed = true` and logs the `completedAt` timestamp.
+- **Auto-Revert**: Unchecking any checklist item automatically resets `completed = false` and `completedAt = null`.
+- **Visual Indicators**:
+  - **Kanban Board**: A green "✓ Complete" status badge appears on the card.
+  - **Detail Drawer**: Completion status is displayed next to the stage dropdown.
+  - **Checklist**: An onboarding congrats banner is shown when all steps are completed.
+
+### Automated Notifications System ⭐ (New)
+- **Daily Cron Engine**: Automates a cron scheduler (node-cron running at 9 AM daily by default) that scans the database for active prospects where `nextFollowUpDate` is in the past and stage is not `Pilot Closed`.
+- **Stylized Email Alerts**: Sends structured HTML emails to all active team members listing overdue prospects with direct navigation links.
+- **In-App Notification Center**:
+  - **Bell Icon Dropdown**: Located in the Topbar with a dynamic unread counter badge.
+  - **Notifications Page**: Lists all past alert logs with read/unread toggle actions.
+- **Database Logs**: Records notification history (`NotificationLog`) for auditing.
 
 ### Analytics Dashboard
-- Total prospects count
-- Overall pipeline conversion rate (Cold → Pilot Closed)
-- Overdue follow-ups count
-- Closed this month count
-- Per-stage breakdown: count + average days spent in stage
-- 6-month monthly trend of prospects added
+- Total prospects count.
+- Overall pipeline conversion rate (Cold → Pilot Closed).
+- Overdue follow-ups count.
+- Closed this month count.
+- Per-stage breakdown: count + average days spent in stage (calculated via database-level timestamp diffs).
+- 6-month monthly trend of prospects added.
 
 ### Authentication & Session Management
-- HTTP-only cookie-based JWT sessions (7-day expiry)
-- Middleware supports both `Bearer` token (Authorization header) and cookie-based auth
-- Secure cookies in production (`secure: true`)
-- Auth token issued on both register and login
+- HTTP-only cookie-based JWT sessions (7-day expiry).
+- Middleware supports both `Bearer` token (Authorization header) and cookie-based auth.
+- Secure cookies in production (`secure: true`).
+- Auth token issued on both register and login.
 
-### Role-Based Access Control
-- Three roles enforced at both API and UI level: `admin`, `manager`, `agent`
-- Admin can manage all users and change roles
-- Fine-grained route-level authorization via `authorizeRoles()` middleware
+### System Monitoring
+- **Sentry SDK**: Tracks backend API route requests and captures exceptions.
+- **Global Error Wrappers**: Catch unhandled rejections and uncaught exceptions to prevent silent process crashes.
 
 ---
 
@@ -304,6 +305,9 @@ project-root/
 | View analytics | ✅ | ✅ | ✅ |
 | List all users | ✅ | ❌ | ❌ |
 | Change user role | ✅ | ❌ | ❌ |
+| View in-app notifications | ✅ | ✅ | ✅ |
+| Mark notifications as read | ✅ | ✅ | ✅ |
+| Trigger manual notification check | ✅ | ❌ | ❌ |
 
 ---
 
@@ -332,14 +336,10 @@ Before running this project, ensure you have the following installed:
 
 | Tool | Minimum Version | Check Command |
 |---|---|---|
-| Node.js | 18.x | `node --version` |
-| npm | 9.x | `npm --version` |
-| MySQL / MariaDB | 10.x / 10.5+ (for Prisma) | — |
+| Node.js | 20.x | `node --version` |
+| npm | 10.x | `npm --version` |
+| MySQL / MariaDB | 10.5+ | `mysql --version` |
 | Git | Any | `git --version` |
-
-> **Database Setup**: 
-> - For **Version 1**, Mongoose handles collection creation automatically. 
-> - For **Version 2**, run `npx prisma db push` or `npx prisma migrate dev` to generate the MySQL tables.
 
 ---
 
@@ -347,104 +347,96 @@ Before running this project, ensure you have the following installed:
 
 ### Backend — `Backend/.env`
 
-Create this file by copying the example shipped at the repository root of the backend:
+Create this file at the backend directory root:
 
 ```bash
-cp Backend/.env.example Backend/.env
+cp Backend/src/.env.example Backend/.env
 ```
 
-Then fill in each value. The current backend uses Prisma with a MySQL/MariaDB `DATABASE_URL`.
-
-If the backend crashes on startup, teammates should run these commands first:
-
-```bash
-cd Backend
-npm install
-npx prisma generate
-npm start
-```
-
-If that still fails, check that `Backend/.env` exists, `DATABASE_URL` matches the local MySQL credentials, and the database server is running.
+Define the variables as follows:
 
 ```env
-# Use for Prisma / MySQL (example):
+# Database URL (MariaDB/MySQL)
 DATABASE_URL="mysql://root:password@127.0.0.1:3306/kalnet_crm"
 
-# Server
+# Database Connection Fixes for Windows Local Setup
+MARIADB_ALLOW_PUBLIC_KEY_RETRIEVAL=true
+
+# Server Configuration
 PORT=6060
+NODE_ENV=development
+FRONTEND_URL=http://localhost:3000
 
 # Authentication
 JWT_SECRET=your-very-long-random-secret-at-least-64-characters
 JWT_EXPIRES_IN=7d
 
-# Environment (set to "production" in prod)
-NODE_ENV=development
+# Email / SMTP Configuration
+EMAIL_FROM=noreply@crm.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
 
-# Frontend origin (for CORS)
-FRONTEND_URL=http://localhost:3000
+# Alternative Simple Gmail credentials (if SMTP not configured)
+GMAIL_USER=your-email@gmail.com
+GMAIL_PASS=your-app-password
+
+# Notifications Engine
+ENABLE_NOTIFICATIONS=true
+NOTIFICATION_SCHEDULE="0 9 * * *" # Cron syntax: daily at 9 AM
+
+# Monitoring
+SENTRY_DSN=
+SENTRY_TRACES_SAMPLE_RATE=0.1
 ```
-
-**Variable Reference:**
-
-| Variable | Required | Description |
-|---|:---:|---|
-| `PORT` | Yes | Port the Express server listens on |
-| `JWT_SECRET` | Yes | Secret key for signing JWTs — use a long random string |
-| `JWT_EXPIRES_IN` | Yes | JWT expiry duration (e.g. `7d`, `24h`) |
-| `NODE_ENV` | Yes | `development` or `production` |
-| `FRONTEND_URL` | Yes | Allowed CORS origin — your Next.js URL |
-
-> **Security**: Never commit secrets to version control. Keep them only in `Backend/.env` locally or in your deployment environment variables.
-
----
 
 ### Frontend — `Frontend/.env.local`
 
+Create this file in the Frontend root:
+
 ```env
-# URL of the Express backend — used by Next.js API proxy routes
 NEXT_PUBLIC_BACKEND_URL=http://localhost:6060
 ```
-
-| Variable | Required | Description |
-|---|:---:|---|
-| `NEXT_PUBLIC_BACKEND_URL` | Yes | Full base URL of the Express backend API |
 
 ---
 
 ## 10. Installation & Setup
 
-### 1. Clone the repository
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/your-org/kalnet-crm.git
 cd kalnet-crm
 ```
 
-### 2. Install Backend dependencies
+### 2. Configure Database & Environment
+1. Ensure your local MySQL/MariaDB server is running.
+2. Create an empty database named `kalnet_crm`.
+3. Set up the `.env` file at the root of `Backend/` (as described in the Environment Variables section).
+
+### 3. Install Backend Dependencies & Apply Database Schema
 
 ```bash
 cd Backend
 npm install
+npx prisma generate
+npx prisma migrate dev --name init
+npm run db:seed
 ```
 
-### 3. Configure Backend environment
-
-```bash
-cp Backend/.env.example Backend/.env
-# Edit Backend/.env and fill in all required values
-```
-
-### 4. Install Frontend dependencies
+### 4. Install Frontend Dependencies
 
 ```bash
 cd ../Frontend
 npm install
 ```
 
-### 5. Configure Frontend environment
+### 5. Configure Frontend Environment
 
 ```bash
-# Create .env.local (already present in the repo for local dev)
+# Create Frontend/.env.local and configure backend port to match (6060)
 echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:6060" > .env.local
 ```
 
@@ -454,29 +446,28 @@ echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:6060" > .env.local
 
 Both servers must run simultaneously. Open two terminal windows.
 
-### Terminal 1 — Backend
+### Terminal 1 — Backend API
 
 ```bash
 cd Backend
 npm run dev
 ```
 
-Expected output:
+Expected logs:
 ```
 [nodemon] starting `node server.js`
-Database connected
-Server running on port 6060
+Server is Up and Running at PORT 6060
+[Scheduler] Initializing notification scheduler...
+[Scheduler] Scheduled job: 0 9 * * *
 ```
 
-You can verify the backend is working by visiting:
-```
-http://localhost:6060/
-```
-Response: `{ "success": true, "message": "KALNET CRM API is running", "version": "1.0.0" }`
+You can verify the backend is running by visiting:
+[http://localhost:6060/](http://localhost:6060/)
+Response: `{ "success": true, "message": "EnrollOps CRM API is running", "version": "1.0.0" }`
 
 ---
 
-### Terminal 2 — Frontend
+### Terminal 2 — Frontend Client
 
 ```bash
 cd Frontend
@@ -490,45 +481,28 @@ Expected output:
 - Ready in 2.1s
 ```
 
-Then open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-### First-Time Setup — Create the First Admin User
+### First-Time Admin Setup
 
-The registration endpoint defaults all new users to the `agent` role. To create the first admin, register normally and then manually update the role in the database:
-
-```bash
-# Use your database tool or Prisma Studio and set the user's role to `admin`
-```
-
-Once you have an admin, you can manage all other user roles from within the application at `GET /api/auth/users` and `PATCH /api/auth/users/:id/role`.
-
----
-
-### Build for Production
-
-**Frontend:**
-```bash
-cd Frontend
-npm run build
-npm start          # Serves the production build on port 3000
-```
-
-**Backend** (no build step required — runs directly with Node.js):
-```bash
-cd Backend
-NODE_ENV=production node server.js
-```
+The registration page sets all new accounts to the `agent` role by default. To create the first administrator:
+1. Register an account on the registration page.
+2. Connect to your database using a CLI client or database management tool (e.g., DBeaver, TablePlus, or Prisma Studio).
+3. Find your user record and update `role` to `"admin"`.
+4. Log out and log back in. You can now manage other users and their roles at the User settings panel.
 
 ---
 
 ## 12. API Reference
 
-All API endpoints return JSON in the shape:
+All API endpoints return JSON in the format:
 ```json
 { "success": true, "data": { ... } }
-// or on error:
+```
+On error:
+```json
 { "success": false, "message": "Error description" }
 ```
 
@@ -536,675 +510,387 @@ All API endpoints return JSON in the shape:
 
 **Base path:** `/api/auth`
 
----
-
 #### `POST /api/auth/register`
-
-Register a new user. New users default to the `agent` role.
-
-**Request Body:**
-```json
-{
-  "name": "Jane Doe",
-  "email": "jane@example.com",
-  "password": "securepassword123"
-}
-```
-
-**Responses:**
-
-| Status | Meaning |
-|---|---|
-| `201` | Created — returns user object and sets JWT cookie |
-| `400` | Validation error (missing fields, weak password) |
-| `409` | Email already registered |
-
-**Success Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "user": { "id": "...", "name": "Jane Doe", "email": "jane@example.com", "role": "agent" },
-    "token": "<jwt>"
+Register a new user. Defaults to the `agent` role.
+- **Request Body:**
+  ```json
+  {
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "password": "securepassword123"
   }
-}
-```
-
----
+  ```
+- **Response Statuses:**
+  - `201`: User created, sets JWT cookie.
+  - `400`: Validation error.
+  - `409`: Email already registered.
 
 #### `POST /api/auth/login`
-
-Authenticate an existing user.
-
-**Request Body:**
-```json
-{
-  "email": "jane@example.com",
-  "password": "securepassword123"
-}
-```
-
-**Responses:**
-
-| Status | Meaning |
-|---|---|
-| `200` | OK — returns user object and sets JWT cookie |
-| `401` | Invalid credentials |
-
----
+Authenticate a user.
+- **Request Body:**
+  ```json
+  {
+    "email": "jane@example.com",
+    "password": "securepassword123"
+  }
+  ```
 
 #### `GET /api/auth/me` 🔒
-
-Returns the currently authenticated user.
-
-**Headers:** JWT must be in `Authorization: Bearer <token>` header or `token` cookie.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": { "id": "...", "name": "Jane Doe", "email": "jane@example.com", "role": "agent" }
-}
-```
-
----
+Returns details of the currently authenticated user.
 
 #### `POST /api/auth/logout` 🔒
-
-Clears the JWT cookie and logs out the user.
-
-**Response:** `{ "success": true, "message": "Logged out" }`
-
----
+Clears the session cookie.
 
 #### `GET /api/auth/users` 🔒 Admin only
-
 Returns a list of all registered users.
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    { "id": "...", "name": "Jane", "email": "jane@example.com", "role": "agent", "createdAt": "..." }
-  ]
-}
-```
-
----
-
 #### `PATCH /api/auth/users/:id/role` 🔒 Admin only
-
-Updates a user's role.
-
-**Request Body:**
-```json
-{ "role": "manager" }
-```
-Valid roles: `admin`, `manager`, `agent`
+Updates a user's role. Acceptable roles: `admin`, `manager`, `agent`.
+- **Request Body:**
+  ```json
+  { "role": "manager" }
+  ```
 
 ---
 
 ### Cards (Prospects) Endpoints
 
-**Base path:** `/api` — all routes require authentication 🔒
-
----
+**Base path:** `/api` (Requires authentication 🔒)
 
 #### `GET /api/cards`
-
-Returns all prospects with optional pagination.
-
-**Query Parameters:**
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `page` | number | `1` | Page number |
-| `limit` | number | `20` | Items per page |
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "cards": [ { ...prospect } ],
-    "total": 42,
-    "page": 1,
-    "limit": 20
-  }
-}
-```
-
----
+Returns all prospects (paginated).
+- **Query Parameters:**
+  - `page` (default: 1)
+  - `limit` (default: 20)
 
 #### `GET /api/cards/:id`
-
 Returns a single prospect by ID.
 
----
+#### `POST /api/cards` 🔒 Admin, Manager only
+Creates a new prospect and triggers checklist creation.
+- **Request Body:**
+  ```json
+  {
+    "name": "Dr. Priya Sharma",
+    "school": "Delhi Public School",
+    "role": "Principal",
+    "email": "priya@dps.edu",
+    "phone": "+91-9876543210",
+    "source": "Referral",
+    "stage": "Cold",
+    "lastContactDate": "2026-05-01T00:00:00.000Z",
+    "nextFollowUpDate": "2026-05-15T00:00:00.000Z"
+  }
+  ```
 
-#### `POST /api/cards` — Admin, Manager only
+#### `PATCH /api/cards/:id` 🔒 Admin, Manager only
+Partially updates a prospect. Accepts any subset of parameters.
 
-Creates a new prospect. Automatically triggers creation of the 10-step onboarding checklist.
-
-**Request Body:**
-```json
-{
-  "name": "Dr. Priya Sharma",
-  "school": "Delhi Public School",
-  "role": "Principal",
-  "email": "priya@dps.edu",
-  "phone": "+91-9876543210",
-  "source": "Referral",
-  "stage": "Cold",
-  "lastContactDate": "2026-05-01T00:00:00.000Z",
-  "nextFollowUpDate": "2026-05-15T00:00:00.000Z"
-}
-```
-
-| Field | Required | Type | Description |
-|---|:---:|---|---|
-| `name` | Yes | string | Contact person's name |
-| `school` | Yes | string | School / institution name |
-| `role` | No | string | Contact's role at the school |
-| `email` | No | string | Contact email |
-| `phone` | No | string | Contact phone number |
-| `source` | No | string | Lead source (e.g., Referral, Event) |
-| `stage` | No | string | Pipeline stage (defaults to `Cold`) |
-| `lastContactDate` | No | ISO date | Date of last contact |
-| `nextFollowUpDate` | No | ISO date | Scheduled follow-up date |
-
----
-
-#### `PATCH /api/cards/:id` — Admin, Manager only
-
-Partially updates a prospect. Accepts any subset of the fields listed above.
-
----
-
-#### `DELETE /api/cards/:id` — Admin, Manager only
-
-Deletes a prospect by ID.
+#### `DELETE /api/cards/:id` 🔒 Admin, Manager only
+Deletes a prospect.
 
 ---
 
 ### Notes Endpoints
 
----
+#### `POST /api/cards/:cardId/notes` 🔒 All roles
+Appends a note to a prospect.
+- **Request Body:**
+  ```json
+  { "text": "Scheduled follow-up call." }
+  ```
 
-#### `POST /api/cards/:cardId/notes` — All roles
-
-Adds a note to a prospect.
-
-**Request Body:**
-```json
-{ "text": "Called the principal — interested in a demo next week." }
-```
-
----
-
-#### `GET /api/cards/:cardId/notes`
-
-Returns paginated notes for a prospect (newest first).
-
-**Query Parameters:** `page`, `limit`
+#### `GET /api/cards/:cardId/notes` 🔒 All roles
+Returns notes for a prospect (newest first, paginated).
 
 ---
 
 ### Checklist Endpoints
 
----
+#### `GET /api/cards/:cardId/checklist` 🔒 All roles
+Returns the 10-step onboarding checklist.
 
-#### `GET /api/cards/:cardId/checklist`
-
-Returns the 10-step onboarding checklist for a prospect.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "...",
-      "stepNumber": 1,
-      "title": "School KYC completed",
-      "status": "done",
-      "assignee": "KALNET Ops",
-      "dueDate": "2026-05-12T00:00:00.000Z"
-    }
-  ]
-}
-```
+#### `PATCH /api/checklist/:id` 🔒 Admin, Manager only
+Updates a checklist step status. Toggling the last step to `"done"` triggers auto-completion of the prospect.
+- **Request Body:**
+  ```json
+  { "status": "done" }
+  ```
 
 ---
 
-#### `PATCH /api/checklist/:id` — Admin, Manager only
+### Notifications Endpoints ⭐ (New)
 
-Updates a checklist step's status.
+#### `GET /api/notifications` 🔒 All roles
+Fetches all notifications logged for the authenticated user.
+- **Response:**
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "clx...",
+        "userId": "clx...",
+        "type": "overdue_prospects",
+        "title": "3 Overdue Follow-ups",
+        "message": "You have 3 prospect(s) with overdue follow-up dates.",
+        "metadata": {
+          "prospectCount": 3,
+          "prospectIds": ["clx...", "clx..."]
+        },
+        "read": false,
+        "createdAt": "2026-06-06T09:00:00Z"
+      }
+    ],
+    "unreadCount": 1
+  }
+  ```
 
-**Request Body:**
-```json
-{ "status": "done" }
-```
+#### `GET /api/notifications/unread-count` 🔒 All roles
+Fetches the count of unread notifications.
 
-Valid values: `todo`, `done`
+#### `PATCH /api/notifications/:id/read` 🔒 All roles
+Marks a specific notification log as read.
+
+#### `POST /api/notifications/trigger-check` 🔒 Admin only
+Manually runs the overdue prospect engine, sending emails and creating in-app alerts immediately.
+
+#### `GET /api/debug/notification-status` 🔒 Admin only
+Debug dashboard retrieving details on overdue prospects, system users, and notifications sent.
+
+#### `POST /api/debug/test-email` 🔒 Admin only
+Sends a test HTML email containing overdue prospect data to the admin's email.
 
 ---
 
 ### Analytics Endpoint
 
----
-
-#### `GET /api/analytics` — All roles
-
-Returns a full analytics summary computed in real time from the database.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "stageBreakdown": [
-      { "stage": "Cold", "count": 12, "avgDays": 5.2 },
-      { "stage": "Contacted", "count": 8, "avgDays": 12.0 }
-    ],
-    "totalProspects": 42,
-    "conversionRate": 9.5,
-    "overdueCount": 3,
-    "closedCount": 4,
-    "closedThisMonth": 2,
-    "monthlyTrend": [
-      { "year": 2026, "month": 1, "count": 5 },
-      { "year": 2026, "month": 2, "count": 9 }
-    ]
-  }
-}
-```
-
----
-
-### Rate Limits
-
-| Route Group | Window | Max Requests |
-|---|---|---|
-| `/api/auth/*` | 15 minutes | 1,000 (development) |
-| `/api/*` | 15 minutes | 5,000 (development) |
-
-> **Important**: Reduce these limits significantly before deploying to production. Recommended production values: 20 for auth endpoints, 200 for general API.
+#### `GET /api/analytics` 🔒 All roles
+Returns real-time aggregated metrics computed concurrently from the database.
 
 ---
 
 ## 13. Database Models
 
-### User
+The schema is managed in `Backend/prisma/schema.prisma` with MySQL/MariaDB database configuration.
 
-| Field | Type | Constraints |
-|---|---|---|
-| `name` | String | Required, trimmed |
-| `email` | String | Required, unique, lowercase |
-| `password` | String | Required, hashed with bcrypt, hidden from queries by default |
-| `role` | String enum | `admin` / `manager` / `agent`, defaults to `agent` |
-| `createdAt` / `updatedAt` | Date | Auto-managed by Mongoose |
+### `User`
+| Field | Type | Attributes / Constraints | Description |
+|---|---|---|---|
+| `id` | String | `@id`, `@default(cuid())` | Unique user identifier |
+| `name` | String | | User's full name |
+| `email` | String | `@unique` | Unique login email |
+| `password` | String | | Hashed password (bcrypt) |
+| `role` | String | `@default("agent")` | Access control role: `admin`, `manager`, `agent` |
+| `createdAt` | DateTime | `@default(now())` | User registration timestamp |
+| `updatedAt` | DateTime | `@updatedAt` | Last profile update timestamp |
+| `notificationLogs` | `NotificationLog[]` | | Relation to logs sent to user |
+| `ownedProspects` | `Prospect[]` | | Relation to prospects managed by user |
 
-**Indexes:** `{ email: 1 }` (unique)
+### `Prospect`
+| Field | Type | Attributes / Constraints | Description |
+|---|---|---|---|
+| `id` | String | `@id`, `@default(cuid())` | Unique prospect identifier |
+| `name` | String | | Contact person's name |
+| `school` | String | | School/institution name |
+| `role` | String? | Nullable | Contact's role (e.g. Principal) |
+| `email` | String? | Nullable | Contact's email address |
+| `phone` | String? | Nullable | Contact's phone number |
+| `source` | String | `@default("Direct")` | Source of lead |
+| `stage` | String | `@default("Cold")` | Sales stage: `Cold`, `Contacted`, `Demo Booked`, `Demo Done`, `Proposal Sent`, `Pilot Closed` |
+| `lastContactDate` | DateTime? | Nullable | Date of last interaction |
+| `nextFollowUpDate`| DateTime? | Nullable | Target date for next outreach |
+| `completed` | Boolean | `@default(false)` | Automatically set to `true` when all checklist items are done |
+| `completedAt` | DateTime? | Nullable | Timestamp when completion occurred |
+| `deletedAt` | DateTime? | Nullable | Timestamp for soft deletes |
+| `createdAt` | DateTime | `@default(now())` | Creation date |
+| `updatedAt` | DateTime | `@updatedAt` | Last update date |
+| `ownerId` | String? | Relation | Foreign key to `User(id)` |
+| `lastNotifiedAt` | DateTime? | Nullable | Timestamp of last overdue email notification |
+| `notes` | `ProspectNote[]` | | Relation to logs of notes |
+| `checklistItems` | `OnboardingChecklist[]` | | Relation to 10-step checklist items |
+| `auditLogs` | `AuditLog[]` | | Relation to history logs |
 
----
+### `AuditLog`
+| Field | Type | Attributes / Constraints | Description |
+|---|---|---|---|
+| `id` | String | `@id`, `@default(cuid())` | Log identifier |
+| `prospectId` | String | Relation to `Prospect`, `onDelete: Cascade` | Prospect reference |
+| `action` | String | | Actions like `PROSPECT_CREATED`, `STAGE_CHANGED`, etc. |
+| `actorId` | String | | ID of the user performing the action |
+| `actorRole` | String | | Role of the actor |
+| `metadata` | Json? | Nullable | Arbitrary payload containing change details |
+| `createdAt` | DateTime | `@default(now())` | Log timestamp |
 
-### Card (Prospect)
+### `ProspectNote`
+| Field | Type | Attributes / Constraints | Description |
+|---|---|---|---|
+| `id` | String | `@id`, `@default(cuid())` | Note identifier |
+| `prospectId` | String | Relation to `Prospect`, `onDelete: Cascade` | Prospect reference |
+| `content` | String | | Rich content of the note |
+| `createdAt` | DateTime | `@default(now())` | Note timestamp |
 
-| Field | Type | Constraints |
-|---|---|---|
-| `name` | String | Required |
-| `school` | String | Required |
-| `role` | String | Optional |
-| `email` | String | Optional |
-| `phone` | String | Optional |
-| `source` | String | Optional |
-| `stage` | String enum | Cold / Contacted / Demo Booked / Demo Done / Proposal Sent / Pilot Closed — defaults to `Cold` |
-| `lastContactDate` | Date | Optional |
-| `nextFollowUpDate` | Date | Optional |
-| `createdAt` / `updatedAt` | Date | Auto-managed |
+### `OnboardingChecklist`
+| Field | Type | Attributes / Constraints | Description |
+|---|---|---|---|
+| `id` | String | `@id`, `@default(cuid())` | Step identifier |
+| `prospectId` | String | Relation to `Prospect`, `onDelete: Cascade` | Prospect reference |
+| `stepNumber` | Int | | Index from 1–10 |
+| `title` | String | | Step name (e.g. KYC Completed) |
+| `description` | String? | Nullable | Details of what the step requires |
+| `assignee` | String? | Nullable | Assigned operator or department |
+| `status` | String | `@default("todo")` | Step state: `todo`, `done` |
+| `dueDate` | DateTime? | Nullable | Step due date |
+| `createdAt` | DateTime | `@default(now())` | Step creation timestamp |
+| `updatedAt` | DateTime | `@updatedAt` | Last modification timestamp |
 
-**Indexes:**
-- `{ stage: 1, createdAt: -1 }` — supports Kanban grouping + timeline views
-- `{ createdAt: -1 }` — recent-first listing
-- `{ nextFollowUpDate: 1 }` — overdue query performance
-
----
-
-### Notes
-
-| Field | Type | Constraints |
-|---|---|---|
-| `prospectId` | ObjectId | References `Card`, required |
-| `text` | String | Required |
-| `createdAt` / `updatedAt` | Date | Auto-managed |
-
----
-
-### OnboardingChecklist
-
-| Field | Type | Constraints |
-|---|---|---|
-| `prospectId` | ObjectId | References `Card`, required |
-| `stepNumber` | Number | 1–10, required |
-| `title` | String | Required |
-| `description` | String | Optional |
-| `assignee` | String | Optional (defaults to "KALNET Ops") |
-| `status` | String enum | `todo` / `done`, defaults to `todo` |
-| `dueDate` | Date | Optional |
-
-**Indexes:**
-- `{ prospectId: 1, stepNumber: 1 }` (unique) — one step per number per prospect
-- `{ prospectId: 1, status: 1 }` — filter by completion status
+### `NotificationLog`
+| Field | Type | Attributes / Constraints | Description |
+|---|---|---|---|
+| `id` | String | `@id`, `@default(cuid())` | Log identifier |
+| `userId` | String | Relation to `User`, `onDelete: Cascade` | User reference |
+| `type` | String | `@default("notification")` | Notification category (e.g. `overdue_prospects`) |
+| `title` | String | | Brief notification title |
+| `message` | String | | Detailed notification body message |
+| `metadata` | Json? | Nullable | Payload detailing prospect ids, counts, etc. |
+| `read` | Boolean | `@default(false)` | Viewed status |
+| `createdAt` | DateTime | `@default(now())` | Log timestamp |
 
 ---
 
 ## 14. Security
 
 ### Authentication
-- JWTs are signed with a secret key and stored in **HTTP-only cookies**, making them inaccessible to JavaScript and protected against XSS
-- The middleware also accepts a `Bearer` token in the `Authorization` header for programmatic API consumers
-- Tokens expire after 7 days; logout clears the cookie immediately
-- Passwords are hashed with **bcrypt** (cost factor 10+) and the `password` field is excluded from all queries by default (`select: false`)
+- JWTs are signed with a secret key and stored in **HTTP-only cookies**, protecting them against XSS.
+- Middleware supports standard header tokens (`Authorization: Bearer <token>`) for API clients.
+- Passwords are encrypted with **bcrypt** (10+ salt rounds).
 
-### HTTP Security Headers
+### Security Headers
 All responses include:
+- `X-Content-Type-Options: nosniff` (Prevents MIME-sniffing)
+- `X-Frame-Options: DENY` (Clickjacking protection)
+- `X-XSS-Protection: 1; mode=block` (Browser filter)
+- Hides backend identification (`X-Powered-By` header removed).
 
-| Header | Value | Purpose |
-|---|---|---|
-| `X-Content-Type-Options` | `nosniff` | Prevents MIME-type sniffing |
-| `X-Frame-Options` | `DENY` | Prevents clickjacking in iframes |
-| `X-XSS-Protection` | `1; mode=block` | Enables browser XSS filter |
-| `X-Powered-By` | (removed) | Hides Express server identity |
-
-### CORS
-CORS is restricted to the origin defined in `FRONTEND_URL`. Credentials (cookies) are allowed only for that origin.
-
-### Input Validation
-All request bodies and parameters are validated with **Zod schemas** before reaching any controller. Invalid inputs return a structured `400` error.
-
-### Error Handling
-- Mongoose `ValidationError` → `400`
-- Mongoose `CastError` (bad ObjectId) → `400`
-- Duplicate key error (code `11000`) → `409`
-- Stack traces are only included in error responses when `NODE_ENV !== "production"`
+### CORS & Inputs
+- CORS allows connections only from the origin defined in `FRONTEND_URL`.
+- Inputs are validated strictly against **Zod Schemas**; invalid requests return `400 Bad Request`.
 
 ---
 
 ## 15. Frontend Pages & Components
 
 ### Pages
+- `/login`: Form to sign in.
+- `/register`: Form to sign up.
+- `/`: Kanban board.
+- `/notifications`: Detailed notification panel.
+- `/admin/crm/analytics`: KPI graphs and stage summaries.
+- `/settings`: Change roles, configurations, and manage user listings.
 
-| Route | Access | Description |
-|---|---|---|
-| `/login` | Public | Email/password login form |
-| `/register` | Public | New user registration form |
-| `/` | Protected | Kanban pipeline board |
-| `/admin/crm/analytics` | Protected | Analytics dashboard |
-| `/settings` | Protected | User settings |
-
-### Key Components
-
-**`KanbanBoard`** — The core page component. Wraps all columns in a `DragDropContext`, groups prospects by stage, identifies overdue and due-today cards, and passes edit permissions based on the user's role.
-
-**`KanbanColumn`** — Renders a single pipeline stage column as a `Droppable` zone with the count badge and the list of `ProspectCard` tiles.
-
-**`ProspectCard`** — A `Draggable` card tile showing the school name, contact, stage badge, and overdue/due-today indicators. Clicking opens the `ProspectDrawer`.
-
-**`ProspectDrawer`** — A slide-in side panel showing all prospect fields, an editable form for admin/manager, a notes log with an add-note input, and the onboarding checklist.
-
-**`OnboardingChecklist`** — Renders the 10-step checklist with checkbox controls. Steps are read-only for agents.
-
-**`AnalyticsDashboard`** — Four summary stat cards (total, conversion rate, overdue, closed) plus a table of per-stage breakdowns showing count and average days in stage.
-
-**`AuthProvider`** — React context that fetches `/api/auth/me` on mount, stores the current user, and provides `login`, `logout`, and `user` to the entire component tree.
-
-**`AddProspectModal`** — A modal form for creating or editing a prospect, with all fields and a stage selector.
+### Custom Components
+- `KanbanBoard`: Parent wrapper containing columns, handling DragDropContext and status filters.
+- `KanbanColumn`: Column mapped to each of the six pipeline stages.
+- `ProspectCard`: Card representation displaying metadata, overdue alerts, and green "✓ Complete" status badges.
+- `ProspectDrawer`: Sidebar opening on card click, showing history notes, update forms, and onboarding steps.
+- `NotificationBell`: Red-colored notification count badge in top-right topbar, toggling a dropdown of latest items.
+- `OnboardingChecklist`: Interactive checklists for prospects (marks items todo/done). Shows congrats message on completion.
 
 ---
 
 ## 16. Onboarding Checklist
 
-When a new prospect (card) is created, the backend automatically generates a 10-step onboarding checklist via `createOnboardingChecklist()`. If a checklist already exists for a prospect, it is not duplicated (idempotent).
+Creating a prospect automatically registers a 10-step checklist:
 
-**Default Steps:**
-
-| Step | Title |
-|:---:|---|
-| 1 | School KYC completed |
-| 2 | Admin account created |
-| 3 | Teachers onboarded |
-| 4 | Student data uploaded |
-| 5 | Class structure setup |
-| 6 | Fee module configured |
-| 7 | Attendance module enabled |
-| 8 | Timetable created |
-| 9 | Training session completed |
-| 10 | Go-live confirmation |
-
-Each step is assigned to `"KALNET Ops"` by default and has a due date rolling 1 day apart from the prospect's creation date.
+| Step | Title | Assigned To | Due Date |
+|:---:|---|---|---|
+| 1 | School KYC completed | KALNET Ops | Created Date + 1 Day |
+| 2 | Admin account created | KALNET Ops | Created Date + 2 Days |
+| 3 | Teachers onboarded | KALNET Ops | Created Date + 3 Days |
+| 4 | Student data uploaded | KALNET Ops | Created Date + 4 Days |
+| 5 | Class structure setup | KALNET Ops | Created Date + 5 Days |
+| 6 | Fee module configured | KALNET Ops | Created Date + 6 Days |
+| 7 | Attendance module enabled | KALNET Ops | Created Date + 7 Days |
+| 8 | Timetable created | KALNET Ops | Created Date + 8 Days |
+| 9 | Training session completed | KALNET Ops | Created Date + 9 Days |
+| 10 | Go-live confirmation | KALNET Ops | Created Date + 10 Days |
 
 ---
 
 ## 17. Analytics
 
-The analytics endpoint (`GET /api/analytics`) computes all stats in a single round-trip using `Promise.all()` to run all database queries concurrently:
-
-| Metric | How It's Calculated |
-|---|---|
-| `totalProspects` | `Card.countDocuments()` |
-| `conversionRate` | `(closedTotal / totalProspects) * 100` |
-| `overdueCount` | Cards where `nextFollowUpDate < now` AND stage ≠ `Pilot Closed` |
-| `closedCount` | Cards where `stage = Pilot Closed` |
-| `closedThisMonth` | Pilot Closed cards with `updatedAt ≥ first day of current month` |
-| `stageBreakdown` | Grouped count per stage with average days since creation |
-| `monthlyTrend` | Cards created per month for the last 6 months |
+The `GET /api/analytics` endpoint runs queries in parallel (`Promise.all`) to output:
+- `totalProspects`: Total prospects count in database.
+- `conversionRate`: Percentage converting from Cold → Pilot Closed.
+- `overdueCount`: Prospects past follow-up date and not closed.
+- `closedThisMonth`: Closed prospects with updates during current calendar month.
+- `stageBreakdown`: Count + average days spent in each stage (calculated at database query level using timestamp diffs).
 
 ---
-
-## 17.1. Version 2 Architecture: MySQL + Prisma ORM (Current Version)
-
-The application has migrated to a robust relational architecture using **MySQL / MariaDB** managed via **Prisma ORM (v7.8.x)**. This update ensures structural integrity through hard foreign key constraints, cascading deletes, and strict database indexes, while preserving the API response structures so the Next.js frontend remains fully backwards-compatible.
-
-### Key Architectural Updates in Version 2
-
-1. **Relational Database Schema (`Backend/prisma/schema.prisma`)**:
-   * **`User`**: Handles credentials and user authentication metadata. Optimized with an index on `[role]` for fast permission verification.
-   * **`Prospect`**: Replaces the Mongoose `Card` model. Relates to notes and checklist steps via a standard one-to-many schema. Uses compound indexes on `[stage, createdAt]` and `[nextFollowUpDate]`.
-   * **`ProspectNote`**: Tracks chronological progress notes per prospect. Features a foreign key `prospectId` that references `Prospect(id)` with `onDelete: Cascade`.
-   * **`OnboardingChecklist`**: Manages the 10 operational steps with a unique compound constraint `@@unique([prospectId, stepNumber])` to ensure step uniqueness.
-
-2. **Database Connection Singleton (`Backend/src/db/prismaClient.js`)**:
-   * Instantiates a single shared instance of the Prisma Client to prevent connection leaks during hot-reloads in local development.
-
-3. **Data Access Repository Layer (`Backend/src/repo/`)**:
-   * Uses raw SQL queries via Prisma (`$queryRaw`) for high-performance date operations and custom sorting. For example, `analytics.repo.js` calculates the average days spent per stage using `TIMESTAMPDIFF(DAY, createdAt, NOW())` grouped and ordered via raw MySQL commands.
-
-4. **Idempotent Seeding & Automations (`Backend/prisma/seed.js` & `Backend/src/utils/onbord.chicklist.js`)**:
-   * Pre-populates clean developer environments.
-   * Leverages Prisma's `createMany` with `skipDuplicates: true` to guarantee idempotent checklist generation.
-
----
-
-## 17.2. Environment Variables & Coexistence
-
-The current backend uses Prisma with MySQL/MariaDB. To configure Version 2, set `DATABASE_URL` in `Backend/.env`:
-
-```env
-# Version 2 Connection - MySQL / MariaDB (Active)
-DATABASE_URL="mysql://root:password@127.0.0.1:3306/kalnet_crm"
-```
-
----
-
-## 17.3. Quick Commands for Version 2 (Backend)
-
-Run these commands inside the `Backend/` directory:
-
-```bash
-# 1. Install required MySQL adapter dependencies
-npm install @prisma/adapter-mariadb mariadb
-
-# 2. Generate local Prisma client types
-npx prisma generate
-
-# 3. Apply Prisma migrations to your MySQL/MariaDB database
-npx prisma migrate dev --name init
-
-# 4. Seed database with initial prospects and checklist items
-npm run db:seed
-```
-
----
-
-## 17.4. Troubleshooting Version 2 / MySQL + Prisma
-
-If you run into issues while running or testing the updated MySQL database layer, reference the checklist below:
-
-* **Error `P1001` (Can't reach database server)**:
-  * Check that your MySQL/MariaDB daemon is running.
-  * Verify host, port, username, and password in `DATABASE_URL`.
-  * Windows users can verify connectivity using PowerShell:
-    ```powershell
-    Test-NetConnection -ComputerName 127.0.0.1 -Port 3306
-    ```
-
-* **Error `P1012` / schema `url` configuration issues**:
-  * Prisma v7 expects database schemas to fetch the connection URL via the environment. Ensure the schema database block reads:
-    ```prisma
-    datasource db {
-      provider = "mysql"
-      url      = env("DATABASE_URL")
-    }
-    ```
-
-* **Next.js Bundling / Prisma Client Instance Errors**:
-  * Ensure Next.js API route proxies never import the client directly in client-side modules. Always verify that client code is segregated under the `"use client"` directive, and that proxy route modules use Next.js server context structure.
-
-* **Checklist Duplication**:
-  * If running seed operations multiple times, check that the compound index constraint exists:
-    ```prisma
-    @@unique([prospectId, stepNumber])
-    ```
-    This triggers MySQL database engines to reject duplicate steps, which is caught and skipped safely by the application service.
-
-If you encounter any database warnings or exceptions not documented here, please consult the pair-programming assistant for immediate query optimization.
-
 
 ## 18. Production Deployment
 
-### Backend (e.g., Railway, Render, EC2)
-
-1. Set all environment variables on your hosting platform (do not commit `.env`)
-2. Set `NODE_ENV=production`
-3. Set `FRONTEND_URL` to your production frontend URL
-4. Tighten rate limits in `index.js` — recommended: 20 req/15min for auth, 200 req/15min for API
-5. Use a process manager like `pm2`:
+### Backend (Railway, Render, AWS, Heroku)
+1. Configure all environment variables on your provider (e.g. `NODE_ENV=production`, `FRONTEND_URL`, `DATABASE_URL`).
+2. Run Prisma migrations on the database before startup:
+   ```bash
+   npx prisma migrate deploy
+   ```
+3. Use a process runner (e.g. `pm2`):
    ```bash
    npm install -g pm2
-   pm2 start server.js --name kalnet-api
-   pm2 save
+   pm2 start server.js --name kalnet-crm-api
    ```
-6. Use a reverse proxy (Nginx / Caddy) with HTTPS termination in front of Express
 
-### Frontend (e.g., Vercel, Netlify)
-
-Vercel is the simplest option for Next.js:
-
-```bash
-cd Frontend
-npx vercel
-```
-
-Set the following environment variable in your Vercel project dashboard:
-```
-NEXT_PUBLIC_BACKEND_URL=https://api.yourdomain.com
-```
-
-### Database Hosting (Recommended for Production)
-
-1. Create or provision a managed MySQL/MariaDB instance
-2. Create a database user with read/write permissions
-3. Whitelist your backend server's IP address if your provider requires it
-4. Copy the connection string and set it as `DATABASE_URL`
-
-### Production Checklist
-
-- [ ] `NODE_ENV=production` is set on the backend
-- [ ] JWT secret is a cryptographically random string of at least 64 characters
-- [ ] Rate limits are tightened
-- [ ] HTTPS is enabled on both frontend and backend
-- [ ] `FRONTEND_URL` matches the exact production URL (no trailing slash)
-- [ ] Managed database access rules are configured
-- [ ] `Backend/.env` is excluded from version control (check `.gitignore`)
-- [ ] Error stack traces are not leaked (they are hidden when `NODE_ENV=production`)
+### Frontend (Vercel, Netlify)
+Deploy directly on Vercel:
+1. Connect repository.
+2. In environment variables, set:
+   ```
+   NEXT_PUBLIC_BACKEND_URL=https://api.yourdomain.com
+   ```
+3. Run build: `npm run build`.
 
 ---
 
 ## 19. Common Issues & Troubleshooting
 
-### `Database connection failed` on backend start
+### Database Auth Handshake Error (`allowPublicKeyRetrieval`)
+If local MariaDB/MySQL setups fail with handshake/public key errors, make sure you configure:
+```env
+MARIADB_ALLOW_PUBLIC_KEY_RETRIEVAL=true
+```
+in `Backend/.env` and restart your Node process.
 
-- Check that MySQL/MariaDB is running locally and listening on the host/port in `DATABASE_URL`
-- Verify `DATABASE_URL` in `Backend/.env` has no typos
-- Confirm the database name exists and the username/password are correct
+### Prisma Client Import Errors in Frontend
+If Next.js API route SSR logs compilation errors about imports from `Backend/src/db/prismaClient.js`, make sure that:
+1. You have run `npx prisma generate` in the `Backend/` folder.
+2. If compiling in separate build containers, make sure the Frontend includes client type definitions generated by Prisma.
 
-### `CORS error` in browser console
+### Duplicate Checklist Constraint Failures
+If you attempt to seed the database multiple times, the script handles deletes in a cascade sequence. If you encounter unique key failures, ensure the tables are cleaned in this exact sequence:
+1. `onboardingChecklist`
+2. `prospectNote`
+3. `auditLog`
+4. `prospect`
 
-- Check that `FRONTEND_URL` in the backend `.env` exactly matches the origin the browser reports (including protocol and port, e.g. `http://localhost:3000`)
-- Ensure both servers are running
-
-### `JWT_SECRET is not configured` error
-
-- The `JWT_SECRET` variable is missing or empty in `Backend/.env`
-- Restart the backend server after editing `.env`
-
-### Drag and drop not working
-
-- Only `admin` and `manager` roles can drag cards. If you are logged in as `agent`, drag is intentionally disabled
-- Confirm the `user.role` in the browser's auth context
-
-### Checklist not appearing for a prospect
-
-- The checklist is auto-created when a prospect is first saved via `POST /api/cards`
-- If a prospect was created before this feature was added, call `POST /api/cards/:id` (patch it) and trigger a manual checklist seed, or insert checklist rows directly in the database
-
-### `Too many requests` error (429)
-
-- You have hit the rate limit. Wait 15 minutes or temporarily increase the `max` values in `index.js` during development
-
-### Next.js build errors (`npm run build`)
-
-- Run `npm run lint` to catch type or ESLint issues
-- Ensure all environment variables prefixed with `NEXT_PUBLIC_` are defined before building
-
----
-
-## Monitoring & CI
-
-- Monitoring: The backend supports Sentry for error monitoring. To enable, set `SENTRY_DSN` in `Backend/.env` (or in your hosting environment). When configured, the backend will initialize Sentry and send unhandled exceptions and captured errors. You can control sampling with `SENTRY_TRACES_SAMPLE_RATE`.
-
-- CI: This repository includes a GitHub Actions workflow at `.github/workflows/ci.yml` that installs backend dependencies, runs `npm run prisma:generate`, then installs and builds the frontend. This ensures the Prisma client is generated before the frontend build step (avoids missing client errors during SSR builds).
-
-## Legacy / Housekeeping Notes
-
-- The project uses Prisma with a `DATABASE_URL` for MySQL/MariaDB.
+### Email Delivery Failures (Gmail)
+If using Gmail for notifications, standard passwords will fail. You must:
+1. Turn on 2-Factor Authentication on your Google account.
+2. Create an App Password at `myaccount.google.com/apppasswords`.
+3. Use this 16-character generated string in `GMAIL_PASS` or `SMTP_PASS` (without spaces).
 
 ---
 
 ## 20. Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feat/your-feature-name`
-3. Make your changes following the existing code style
-4. Commit with a descriptive message: `git commit -m "feat: add email notification on stage change"`
-5. Push to your fork: `git push origin feat/your-feature-name`
-6. Open a Pull Request against `main`
+1. Fork the repository.
+2. Create your branch: `git checkout -b feat/your-feature`.
+3. Commit changes: `git commit -m "feat: descriptive message"`.
+4. Push: `git push origin feat/your-feature`.
+5. Create a Pull Request against `main`.
 
 **Code Style Guidelines:**
-- Backend uses ES Modules (`import`/`export`) — do not use `require()`
-- All request inputs must have a corresponding Zod schema in `/src/validation/`
-- Business logic belongs in `/src/service/`, data access in `/src/repo/`, HTTP handling in `/src/controllers/`
-- Frontend components use TypeScript — all props must be typed
-- Tailwind classes should use the project's design tokens where possible
+- Backend uses ES Modules (`import`/`export`).
+- Validate incoming routes with Zod schemas in `/src/validation/`.
+- Frontend code requires strict TypeScript formatting.
