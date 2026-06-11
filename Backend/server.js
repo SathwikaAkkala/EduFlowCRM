@@ -1,6 +1,6 @@
 import server from "./index.js";
 import * as Sentry from "@sentry/node";
-import { initializeScheduler, stopScheduler } from "./src/utils/scheduler.js";
+import { initializeScheduler, stopScheduler, triggerOverdueCheck } from "./src/utils/scheduler.js";
 
 const PORT = Number(process.env.PORT) || 5000;
 
@@ -10,6 +10,11 @@ server.listen(PORT, () => {
     // Initialize notification scheduler
     if (process.env.ENABLE_NOTIFICATIONS !== "false") {
         initializeScheduler();
+
+        // Run one check immediately so newly overdue prospects are handled on startup.
+        triggerOverdueCheck().catch((err) => {
+            console.error("[Scheduler] Startup overdue check failed:", err && err.message ? err.message : err);
+        });
     } else {
         console.log("[Scheduler] Notifications disabled via ENABLE_NOTIFICATIONS=false");
     }

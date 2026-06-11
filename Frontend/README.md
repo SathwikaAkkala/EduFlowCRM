@@ -72,7 +72,7 @@ enrollops-crm/
 │   └── seed.ts                       # 10 seed prospects across all stages
 ├── types/
 │   └── index.ts                      # Shared TS types + STAGE_CONFIG
-├── .env.example
+├── .env.local
 ├── next.config.js
 ├── tailwind.config.ts
 └── package.json
@@ -89,8 +89,8 @@ npm install
 
 ### 2. Configure environment
 ```bash
-cp .env.example .env
-# Edit .env — set your MySQL DATABASE_URL
+echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:5000" > .env.local
+# Edit .env.local if your backend runs on a different port
 ```
 
 ### 3. Set up database
@@ -147,5 +147,3 @@ npm run dev
 
 *EnrollOps · FS-5 Internal CRM · April 2026 · Confidential*
 "# FS5-EnrollOps" 
-
-

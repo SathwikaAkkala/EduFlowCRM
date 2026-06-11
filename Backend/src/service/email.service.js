@@ -167,4 +167,59 @@ export const sendOverdueNotificationEmail = async (userEmail, overdueProspects) 
   return sendEmail(userEmail, `⚠️ ${overdueProspects.length} Overdue Follow-ups Need Your Attention`, html);
 };
 
-export default { sendEmail, sendOverdueNotificationEmail };
+/**
+ * Send a prospect-facing overdue follow-up reminder email
+ * @param {string} prospectEmail - Prospect email to notify
+ * @param {object} prospect - Overdue prospect record
+ * @returns {Promise<object>} Email result
+ */
+export const sendProspectOverdueReminderEmail = async (prospectEmail, prospect) => {
+  const contactName = prospect?.name?.trim() || "there";
+  const schoolName = prospect?.school?.trim() || "your prospect record";
+  const followUpDate = prospect?.nextFollowUpDate
+    ? new Date(prospect.nextFollowUpDate).toLocaleDateString()
+    : "a previous date";
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #1976d2; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f5f5f5; padding: 20px; border-radius: 0 0 5px 5px; }
+          .summary { margin: 16px 0; padding: 14px; background: white; border-left: 4px solid #1976d2; }
+          .footer { margin-top: 20px; font-size: 12px; color: #666; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h2>Follow-up reminder</h2>
+          </div>
+          <div class="content">
+            <p>Hi ${contactName},</p>
+            <p>This is a friendly reminder that the follow-up for <strong>${schoolName}</strong> is overdue.</p>
+            <div class="summary">
+              <p style="margin: 0;"><strong>Original follow-up date:</strong> ${followUpDate}</p>
+            </div>
+            <p>Please reply to this email if you would like to continue the conversation or reschedule the follow-up.</p>
+            <div class="footer">
+              <p>This is an automated reminder from the CRM system.</p>
+              <p>&copy; ${new Date().getFullYear()} CRM. All rights reserved.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail(
+    prospectEmail,
+    `Reminder: follow-up for ${schoolName} is overdue`,
+    html
+  );
+};
+
+export default { sendEmail, sendOverdueNotificationEmail, sendProspectOverdueReminderEmail };

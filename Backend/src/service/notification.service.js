@@ -1,5 +1,8 @@
 import prisma from "../db/prismaClient.js";
-import { sendOverdueNotificationEmail } from "./email.service.js";
+import {
+  sendOverdueNotificationEmail,
+  sendProspectOverdueReminderEmail,
+} from "./email.service.js";
 
 /**
  * Check for overdue prospects and send notifications to all users
@@ -44,17 +47,23 @@ export const checkAndNotifyOverdueProspects = async () => {
 
     console.log(`[Notification Service] Found ${overdueProspects.length} overdue prospect(s)`);
 
+    let prospectEmailsSent = 0;
+    let prospectEmailsFailed = 0;
+
     // First: email prospects directly if they have an email and update their lastNotifiedAt
     for (const p of overdueProspects) {
       if (p.email) {
         try {
-          const res = await sendOverdueNotificationEmail(p.email, [p]);
+          const res = await sendProspectOverdueReminderEmail(p.email, p);
           if (res.success) {
             await prisma.prospect.update({ where: { id: p.id }, data: { lastNotifiedAt: new Date() } });
+            prospectEmailsSent++;
           } else {
+            prospectEmailsFailed++;
             console.error(`[Notification Service] Failed to send email to prospect ${p.email}: ${res.error}`);
           }
         } catch (err) {
+          prospectEmailsFailed++;
           console.error(`[Notification Service] Error sending email to prospect ${p.email}:`, err.message);
         }
       }
@@ -180,12 +189,14 @@ export const checkAndNotifyOverdueProspects = async () => {
     }
 
     console.log(
-      `[Notification Service] Notification cycle complete. Sent: ${sentCount}, Failed: ${failedCount}`
+      `[Notification Service] Notification cycle complete. Prospect emails sent: ${prospectEmailsSent}, failed: ${prospectEmailsFailed}. Internal notifications sent: ${sentCount}, failed: ${failedCount}`
     );
 
     return {
       success: true,
       overdueProspectsFound: overdueProspects.length,
+      prospectEmailsSent,
+      prospectEmailsFailed,
       emailsSent: sentCount,
       emailsFailed: failedCount,
       usersNotified: sentCount,

@@ -112,7 +112,7 @@ The system follows a **decoupled architecture**: a Node.js/Express REST API back
 │   ├── Cards / Notes / Checklist CRUD (/api)              │
 │   ├── Notifications Management (/api/notifications)       │
 │   ├── Debug and Test Endpoints (/api/debug)              │
-│   └── Node-Cron Scheduler (Runs daily checks at 9 AM)    │
+│   └── Node-Cron Scheduler (Runs automatic checks every 15 minutes) │
 └──────────────────────┬───────────────────────────────────┘
                        │ Prisma Client (MariaDB Adapter)
                        ▼
@@ -138,9 +138,8 @@ project-root/
 │   ├── prisma/                      ← Database Migrations & Seeds
 │   │   ├── schema.prisma            ← Prisma schema models (User, Prospect, AuditLog, etc.)
 │   │   └── seed.ts                  ← Idempotent DB seeder
+│   ├── .env                         ← Runtime secrets (never commit this)
 │   └── src/
-│       ├── .env                     ← Runtime secrets (never commit this)
-│       ├── .env.example             ← Template for environment variables
 │       ├── db/
 │       │   └── prismaClient.js      ← Connection client singleton (allowPublicKeyRetrieval guard)
 │       ├── controllers/
@@ -262,7 +261,7 @@ project-root/
   - **Checklist**: An onboarding congrats banner is shown when all steps are completed.
 
 ### Automated Notifications System ⭐ (New)
-- **Daily Cron Engine**: Automates a cron scheduler (node-cron running at 9 AM daily by default) that scans the database for active prospects where `nextFollowUpDate` is in the past and stage is not `Pilot Closed`.
+- **Automatic Cron Engine**: Automates a cron scheduler (node-cron running every 15 minutes by default) that scans the database for active prospects where `nextFollowUpDate` is in the past and stage is not `Pilot Closed`.
 - **Stylized Email Alerts**: Sends structured HTML emails to all active team members listing overdue prospects with direct navigation links.
 - **In-App Notification Center**:
   - **Bell Icon Dropdown**: Located in the Topbar with a dynamic unread counter badge.
@@ -350,7 +349,7 @@ Before running this project, ensure you have the following installed:
 Create this file at the backend directory root:
 
 ```bash
-cp Backend/src/.env.example Backend/.env
+# Create Backend/.env and add the backend variables from the environment section below
 ```
 
 Define the variables as follows:
@@ -385,7 +384,7 @@ GMAIL_PASS=your-app-password
 
 # Notifications Engine
 ENABLE_NOTIFICATIONS=true
-NOTIFICATION_SCHEDULE="0 9 * * *" # Cron syntax: daily at 9 AM
+NOTIFICATION_SCHEDULE="*/15 * * * *" # Cron syntax: every 15 minutes (override as needed)
 
 # Monitoring
 SENTRY_DSN=
@@ -458,7 +457,7 @@ Expected logs:
 [nodemon] starting `node server.js`
 Server is Up and Running at PORT 6060
 [Scheduler] Initializing notification scheduler...
-[Scheduler] Scheduled job: 0 9 * * *
+[Scheduler] Scheduled job: */15 * * * *
 ```
 
 You can verify the backend is running by visiting:

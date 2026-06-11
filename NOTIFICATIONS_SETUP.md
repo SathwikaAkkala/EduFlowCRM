@@ -42,7 +42,7 @@ Core business logic for notifications:
 
 #### 3. **Scheduler** (`Backend/src/utils/scheduler.js`)
 Uses `node-cron` to run periodic checks:
-- Default schedule: **9 AM daily** (`0 9 * * *`)
+- Default schedule: **every 15 minutes** (`*/15 * * * *`)
 - Configurable via `NOTIFICATION_SCHEDULE` env var
 - Graceful shutdown on server termination
 
@@ -137,8 +137,8 @@ GMAIL_PASS=your-app-password
 ENABLE_NOTIFICATIONS=true
 
 # Cron schedule (minute hour dayOfMonth month dayOfWeek)
-# Default: 0 9 * * * (9 AM every day)
-NOTIFICATION_SCHEDULE=0 9 * * *
+# Default: */15 * * * * (every 15 minutes)
+NOTIFICATION_SCHEDULE=*/15 * * * *
 
 # Common schedules:
 # Every hour: 0 * * * *
@@ -159,10 +159,10 @@ NOTIFICATION_SCHEDULE=0 9 * * *
 
 ## How It Works
 
-### Daily Workflow
+### Automatic Workflow
 
 ```
-9:00 AM → Cron triggers
+Server starts -> immediate overdue check
   ↓
 Scheduler calls checkAndNotifyOverdueProspects()
   ↓
