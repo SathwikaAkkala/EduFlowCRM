@@ -1,10 +1,12 @@
 // lib/api.ts — Central API client for the Express backend
 
 const BACKEND_URL =
-  process.env.BACKEND_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "http://localhost:5000";
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:5000"
+    : process.env.NEXT_PUBLIC_BACKEND_URL ||
+      process.env.BACKEND_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:5000";
 const NORMALIZED_BACKEND_URL = BACKEND_URL.replace(/\/+$/, "");
 
 // ─── Stage Mapping ───────────────────────────────────────────────

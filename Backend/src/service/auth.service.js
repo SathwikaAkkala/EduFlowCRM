@@ -2,6 +2,9 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import prisma from "../db/prismaClient.js";
 import { DEFAULT_ROLE, isValidRole } from "../utils/roles.js";
+import { loadBackendEnv } from "../utils/load-env.js";
+
+loadBackendEnv();
 
 function getJwtConfig() {
     const JWT_SECRET = process.env.JWT_SECRET;

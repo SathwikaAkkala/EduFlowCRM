@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { LogOut, User } from "lucide-react";
 
 type SettingsState = {
   compactCards: boolean;
@@ -66,17 +67,31 @@ export default function SettingsPage() {
             ) : !user ? (
               <p className="text-xs font-mono text-danger mt-4">Not signed in</p>
             ) : (
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <ReadField label="Name" value={user.name} />
-                <ReadField label="Email" value={user.email} />
-                <ReadField label="Role" value={user.role} />
-                <ReadField label="User ID" value={user.id} />
+              <div className="mt-4 flex flex-col gap-4">
+                <div className="flex items-center gap-3 rounded-lg border border-ink-5 bg-surface-3 p-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-800">
+                    <User className="h-4 w-4 text-brand-200" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-mono text-[10px] uppercase tracking-widest text-ink-5">Signed in</p>
+                    <p className="truncate text-sm font-semibold text-ink-1">{user.name}</p>
+                    <p className="truncate font-mono text-[10px] text-ink-4">{user.role}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <ReadField label="Name" value={user.name} />
+                  <ReadField label="Email" value={user.email} />
+                  <ReadField label="Role" value={user.role} />
+                  <ReadField label="User ID" value={user.id} />
+                </div>
               </div>
             )}
             {!loading && user && (
               <div className="mt-4 pt-4 border-t border-ink-5 flex justify-end">
-                <Button variant="danger" onClick={logout}>
-                  Logout
+                <Button variant="danger" onClick={logout} className="gap-2">
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
                 </Button>
               </div>
             )}

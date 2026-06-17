@@ -1,7 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import dotenv from "dotenv";
+import { loadBackendEnv } from "./src/utils/load-env.js";
 import rateLimit from "express-rate-limit";
 import * as Sentry from "@sentry/node";
 import MainRoutes from "./src/routers/main.routs.js";
@@ -9,7 +9,7 @@ import AuthRoutes from "./src/routers/auth.routes.js";
 import NotificationRoutes from "./src/routers/notification.routes.js";
 import DebugRoutes from "./src/routers/debug.routes.js";
 
-dotenv.config();
+loadBackendEnv();
 
 // Initialize Sentry if configured
 if (process.env.SENTRY_DSN) {

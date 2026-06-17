@@ -1,5 +1,8 @@
 import jwt from "jsonwebtoken";
 import prisma from "../db/prismaClient.js";
+import { loadBackendEnv } from "../utils/load-env.js";
+
+loadBackendEnv();
 
 export async function requireAuth(req, res, next) {
     try {

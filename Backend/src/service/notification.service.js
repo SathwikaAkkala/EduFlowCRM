@@ -49,14 +49,28 @@ export const checkAndNotifyOverdueProspects = async () => {
 
     let prospectEmailsSent = 0;
     let prospectEmailsFailed = 0;
+    const prospectIdsToMarkNotified = new Set();
 
-    // First: email prospects directly if they have an email and update their lastNotifiedAt
+    const markProspectsAsNotified = async (prospectIds) => {
+      const uniqueIds = [...new Set(prospectIds)].filter(Boolean);
+      if (uniqueIds.length === 0) {
+        return;
+      }
+
+      await prisma.prospect.updateMany({
+        where: { id: { in: uniqueIds } },
+        data: { lastNotifiedAt: new Date() },
+      });
+    };
+
+    // First: email prospects directly if they have an email.
+    // We batch the DB update afterward to avoid one write per email.
     for (const p of overdueProspects) {
       if (p.email) {
         try {
           const res = await sendProspectOverdueReminderEmail(p.email, p);
           if (res.success) {
-            await prisma.prospect.update({ where: { id: p.id }, data: { lastNotifiedAt: new Date() } });
+            prospectIdsToMarkNotified.add(p.id);
             prospectEmailsSent++;
           } else {
             prospectEmailsFailed++;
@@ -77,17 +91,29 @@ export const checkAndNotifyOverdueProspects = async () => {
       return map;
     }, {});
 
-    // Fetch admins once (for unassigned fallback)
-    const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { id: true, email: true, name: true } });
+    // Fetch admins only if we actually need the fallback path.
+    let admins = null;
+    const getAdmins = async () => {
+      if (!admins) {
+        admins = await prisma.user.findMany({
+          where: { role: "admin" },
+          select: { id: true, email: true, name: true },
+        });
+      }
+      return admins;
+    };
 
     let sentCount = 0;
     let failedCount = 0;
 
     // Notify each owner (or admins for unassigned)
     for (const [ownerId, prospects] of Object.entries(byOwner)) {
+      const prospectIds = prospects.map((p) => p.id);
+
       if (ownerId === "UNASSIGNED") {
         // Notify all admins about unassigned overdue prospects
-        for (const admin of admins) {
+        const fallbackAdmins = await getAdmins();
+        for (const admin of fallbackAdmins) {
           try {
             const result = await sendOverdueNotificationEmail(admin.email, prospects);
             if (result.success) {
@@ -101,13 +127,7 @@ export const checkAndNotifyOverdueProspects = async () => {
                   read: false,
                 },
               });
-
-              // Update cooldown marker for ALL prospects included in this email
-              await prisma.prospect.updateMany({
-                where: { id: { in: prospects.map((p) => p.id) } },
-                data: { lastNotifiedAt: new Date() },
-              });
-
+              prospectIds.forEach((id) => prospectIdsToMarkNotified.add(id));
               sentCount++;
             } else {
               failedCount++;
@@ -118,12 +138,14 @@ export const checkAndNotifyOverdueProspects = async () => {
             console.error(`[Notification Service] Error notifying admin ${admin.id}:`, error.message);
           }
         }
+
       } else {
         // Notify the owner directly
         const owner = prospects[0].owner;
         if (!owner) {
           // fallback to admins if owner missing
-          for (const admin of admins) {
+          const fallbackAdmins = await getAdmins();
+          for (const admin of fallbackAdmins) {
             try {
               const result = await sendOverdueNotificationEmail(admin.email, prospects);
               if (result.success) {
@@ -137,13 +159,7 @@ export const checkAndNotifyOverdueProspects = async () => {
                     read: false,
                   },
                 });
-
-                // Update cooldown marker for ALL prospects included in this email
-                await prisma.prospect.updateMany({
-                  where: { id: { in: prospects.map((p) => p.id) } },
-                  data: { lastNotifiedAt: new Date() },
-                });
-
+                prospectIds.forEach((id) => prospectIdsToMarkNotified.add(id));
                 sentCount++;
               } else {
                 failedCount++;
@@ -154,6 +170,7 @@ export const checkAndNotifyOverdueProspects = async () => {
               console.error(`[Notification Service] Error notifying admin ${admin.id}:`, error.message);
             }
           }
+
         } else {
           try {
             const result = await sendOverdueNotificationEmail(owner.email, prospects);
@@ -168,13 +185,7 @@ export const checkAndNotifyOverdueProspects = async () => {
                   read: false,
                 },
               });
-
-              // Update cooldown marker for ALL prospects included in this email
-              await prisma.prospect.updateMany({
-                where: { id: { in: prospects.map((p) => p.id) } },
-                data: { lastNotifiedAt: new Date() },
-              });
-
+              prospectIds.forEach((id) => prospectIdsToMarkNotified.add(id));
               sentCount++;
             } else {
               failedCount++;
@@ -187,6 +198,8 @@ export const checkAndNotifyOverdueProspects = async () => {
         }
       }
     }
+
+    await markProspectsAsNotified([...prospectIdsToMarkNotified]);
 
     console.log(
       `[Notification Service] Notification cycle complete. Prospect emails sent: ${prospectEmailsSent}, failed: ${prospectEmailsFailed}. Internal notifications sent: ${sentCount}, failed: ${failedCount}`

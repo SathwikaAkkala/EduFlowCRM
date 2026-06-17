@@ -2,6 +2,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import type { Role } from "@/lib/roles";
 import { readBackendResponse } from "@/lib/api";
 
@@ -35,6 +36,7 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   // Check auth status on mount
   useEffect(() => {
@@ -67,12 +69,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await readBackendResponse(res);
 
     if (!res.ok) {
-      throw new Error(data.error || "Login failed");
+      throw new Error(data.error || data.message || "Login failed");
     }
 
     setUser(data.user);
-    window.location.assign(data.user?.role === "admin" ? "/admin/crm/analytics" : "/dashboard");
-  }, []);
+    const target = data.user?.role === "admin" ? "/admin/crm/analytics" : "/dashboard";
+    router.replace(target);
+    router.refresh();
+  }, [router]);
 
   const register = useCallback(async (name: string, email: string, password: string, role: Role) => {
     const res = await fetch("/api/auth/register", {
@@ -84,18 +88,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await readBackendResponse(res);
 
     if (!res.ok) {
-      throw new Error(data.error || "Registration failed");
+      throw new Error(data.error || data.message || "Registration failed");
     }
 
     setUser(data.user);
-    window.location.assign(data.user?.role === "admin" ? "/admin/crm/analytics" : "/dashboard");
-  }, []);
+    const target = data.user?.role === "admin" ? "/admin/crm/analytics" : "/dashboard";
+    router.replace(target);
+    router.refresh();
+  }, [router]);
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     setUser(null);
-    window.location.assign("/login");
-  }, []);
+    router.replace("/login");
+    router.refresh();
+  }, [router]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout }}>

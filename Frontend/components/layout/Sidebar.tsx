@@ -23,7 +23,11 @@ type NavItem = {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, loading } = useAuth();
+  const role = user?.role ?? "agent";
+  const visibleNavItems = loading
+    ? NAV_ITEMS
+    : NAV_ITEMS.filter(({ allowedRoles }: NavItem) => hasRoleAccess(role, allowedRoles));
 
   return (
     <aside className="flex shrink-0 flex-col border-b border-ink-5 bg-surface-1 md:h-dvh md:w-[220px] md:border-b-0 md:border-r">
@@ -46,7 +50,11 @@ export function Sidebar() {
         <p className="hidden px-2 pb-1 text-[10px] font-mono font-semibold uppercase tracking-widest text-ink-5 md:block">
           Menu
         </p>
-        {NAV_ITEMS.filter(({ allowedRoles }: NavItem) => hasRoleAccess(user?.role, allowedRoles)).map(({ href, icon: Icon, label }) => {
+        {loading ? (
+          <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-ink-5">
+            Loading menu...
+          </div>
+        ) : visibleNavItems.length > 0 ? visibleNavItems.map(({ href, icon: Icon, label }) => {
           const active = href === "/dashboard" ? pathname.startsWith("/dashboard") : pathname === href;
           return (
             <Link
@@ -63,10 +71,14 @@ export function Sidebar() {
               <span className="whitespace-nowrap">{label}</span>
             </Link>
           );
-        })}
+        }) : (
+          <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-ink-5">
+            No menu available
+          </div>
+        )}
       </nav>
 
-      <div className="border-t border-ink-5 px-3 py-3">
+      <div className="mt-auto border-t border-ink-5 px-3 py-3">
         {user ? (
           <div className="flex items-center justify-between gap-3 md:flex-col md:items-stretch">
             <div className="flex min-w-0 items-center gap-2.5 px-1 md:px-2">
@@ -74,6 +86,7 @@ export function Sidebar() {
                 <User className="h-3.5 w-3.5 text-brand-200" />
               </div>
               <div className="min-w-0 flex-1">
+                <p className="font-mono text-[10px] uppercase tracking-widest text-ink-5">Signed in</p>
                 <p className="truncate text-xs font-semibold text-ink-1">{user.name}</p>
                 <p className="truncate font-mono text-[10px] text-ink-4">{user.role}</p>
               </div>

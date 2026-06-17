@@ -1,23 +1,43 @@
 import server from "./index.js";
 import * as Sentry from "@sentry/node";
 import { initializeScheduler, stopScheduler, triggerOverdueCheck } from "./src/utils/scheduler.js";
+import { checkDatabaseHealth } from "./src/utils/db.health.js";
 
 const PORT = Number(process.env.PORT) || 5000;
 
-server.listen(PORT, () => {
-    console.log(`Server is Up and Running at PORT ${PORT}`);
+const startServer = async () => {
+    const dbHealth = await checkDatabaseHealth();
 
-    // Initialize notification scheduler
-    if (process.env.ENABLE_NOTIFICATIONS !== "false") {
-        initializeScheduler();
-
-        // Run one check immediately so newly overdue prospects are handled on startup.
-        triggerOverdueCheck().catch((err) => {
-            console.error("[Scheduler] Startup overdue check failed:", err && err.message ? err.message : err);
-        });
+    if (dbHealth.ok) {
+        console.log(`[Startup] Database health check passed in ${dbHealth.durationMs}ms`);
     } else {
-        console.log("[Scheduler] Notifications disabled via ENABLE_NOTIFICATIONS=false");
+        console.error(`[Startup] Database health check failed after ${dbHealth.durationMs}ms: ${dbHealth.error}`);
     }
+
+    server.listen(PORT, () => {
+        console.log(`Server is Up and Running at PORT ${PORT}`);
+
+        // Initialize notification scheduler
+        if (process.env.ENABLE_NOTIFICATIONS !== "false") {
+            initializeScheduler();
+
+            if (dbHealth.ok) {
+                // Run one check immediately so newly overdue prospects are handled on startup.
+                triggerOverdueCheck().catch((err) => {
+                    console.error("[Scheduler] Startup overdue check failed:", err && err.message ? err.message : err);
+                });
+            } else {
+                console.warn("[Scheduler] Skipping startup overdue check because the database health check failed");
+            }
+        } else {
+            console.log("[Scheduler] Notifications disabled via ENABLE_NOTIFICATIONS=false");
+        }
+    });
+};
+
+startServer().catch((err) => {
+    console.error("[Startup] Failed to start server:", err && err.message ? err.message : err);
+    process.exit(1);
 });
 
 // Listen for server errors during startup/runtime
