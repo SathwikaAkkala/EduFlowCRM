@@ -1,7 +1,7 @@
 // app/api/auth/me/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { backendFetch } from "@/lib/api";
+import { backendFetch, readBackendResponse } from "@/lib/api";
 
 export async function GET() {
   try {
@@ -13,11 +13,11 @@ export async function GET() {
     }
 
     const res = await backendFetch("/api/auth/me", { token });
-    const json = await res.json();
+    const json = await readBackendResponse(res);
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: json.message || "Not authenticated" },
+        { error: json.message || json.error || "Not authenticated" },
         { status: 401 }
       );
     }

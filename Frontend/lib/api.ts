@@ -71,16 +71,25 @@ export async function backendFetch(path: string, options: FetchOptions = {}) {
   return res;
 }
 
+export async function readBackendResponse<T = any>(response: Response): Promise<T & { message?: string; error?: string }> {
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text } as T & { message?: string; error?: string };
+    }
+  }
+
+  return { message: text } as T & { message?: string; error?: string };
+}
+
 export async function apiCall(path: string, options: FetchOptions = {}) {
   const normalizedPath = path.startsWith("/api") ? path : `/api${path}`;
   const response = await backendFetch(normalizedPath, options);
-  const contentType = response.headers.get("content-type") || "";
-
-  if (contentType.includes("application/json")) {
-    return response.json();
-  }
-
-  return response.text();
+  return readBackendResponse(response);
 }
 
 // ─── Map a single backend card → frontend Prospect shape ─────────

@@ -1,6 +1,6 @@
 // app/api/auth/register/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { backendFetch } from "@/lib/api";
+import { backendFetch, readBackendResponse } from "@/lib/api";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,13 +11,13 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(body),
     });
 
-    const json = await res.json();
+    const json = await readBackendResponse(res);
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: json.message || "Registration failed" },
-        { status: res.status }
-      );
+          { error: json.message || json.error || "Registration failed" },
+          { status: res.status }
+        );
     }
 
     // Set the JWT token as httpOnly cookie

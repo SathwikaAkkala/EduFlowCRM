@@ -1,6 +1,6 @@
 // app/api/auth/login/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { backendFetch } from "@/lib/api";
+import { backendFetch, readBackendResponse } from "@/lib/api";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,11 +11,11 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(body),
     });
 
-    const json = await res.json();
+    const json = await readBackendResponse(res);
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: json.message || "Login failed" },
+        { error: json.message || json.error || "Login failed" },
         { status: res.status }
       );
     }

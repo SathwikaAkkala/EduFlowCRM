@@ -21,6 +21,10 @@ if (process.env.SENTRY_DSN) {
 }
 
 const server = express();
+const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "http://localhost:3000")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
 // Sentry request handler middleware (if enabled)
 if (process.env.SENTRY_DSN) {
@@ -37,10 +41,12 @@ server.use((req, res, next) => {
 });
 
 // ─── Core Middleware ─────────────────────────────────────────────
-server.use(cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    credentials: true,
-}));
+server.use(
+    cors({
+        origin: allowedOrigins,
+        credentials: true,
+    })
+);
 server.use(express.json({ limit: "1mb" }));
 server.use(express.urlencoded({ extended: true }));
 server.use(cookieParser());
