@@ -30,8 +30,8 @@ export const createCardBodySchema = z.object({
     phone: z.string().trim().optional(),
     source: z.string().trim().optional(),
     stage: stageSchema.optional(),
-    lastContactDate: z.string().trim().optional(),
-    nextFollowUpDate: z.string().trim().optional()
+    lastContactDate: z.union([z.string().trim(), z.null()]).optional(),
+    nextFollowUpDate: z.union([z.string().trim(), z.null()]).optional()
 });
 
 export const updateCardBodySchema =
