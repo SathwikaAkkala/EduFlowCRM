@@ -44,8 +44,9 @@ export default function PipelinePage() {
           open={showAddModal}
           onClose={() => setShowAddModal(false)}
           onCreate={async (data) => {
-            await createProspect(data);
+            const created = await createProspect(data);
             setShowAddModal(false);
+            return created;
           }}
         />
       )}

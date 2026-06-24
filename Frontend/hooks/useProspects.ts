@@ -13,7 +13,7 @@ interface UseProspectsReturn {
   updateProspect: (prospectId: string, data: Partial<Prospect>) => Promise<void>;
   deleteProspect: (prospectId: string) => Promise<void>;
   addNote: (prospectId: string, content: string) => Promise<ProspectNote>;
-  createProspect: (data: Omit<Prospect, "id" | "createdAt" | "updatedAt" | "notes" | "checklistItems">) => Promise<void>;
+  createProspect: (data: Omit<Prospect, "id" | "createdAt" | "updatedAt" | "notes" | "checklistItems">) => Promise<Prospect>;
 }
 
 export function useProspects(): UseProspectsReturn {
@@ -24,7 +24,7 @@ export function useProspects(): UseProspectsReturn {
   const fetchProspects = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/prospects");
+      const res = await fetch("/api/prospects", { cache: "no-store" });
       if (!res.ok) {
         let message = "Failed to fetch prospects";
         try {
@@ -127,9 +127,15 @@ export function useProspects(): UseProspectsReturn {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error("Failed to create prospect");
-    await fetchProspects();
-  }, [fetchProspects]);
+    const payload = await res.json();
+    if (!res.ok) {
+      throw new Error(payload?.error || payload?.message || "Failed to create prospect");
+    }
+
+    const created = payload as Prospect;
+    setProspects((prev) => [created, ...prev.filter((p) => p.id !== created.id)]);
+    return created;
+  }, []);
 
   return {
     prospects,

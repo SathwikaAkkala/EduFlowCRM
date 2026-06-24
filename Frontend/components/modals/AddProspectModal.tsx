@@ -10,11 +10,12 @@ import { STAGE_ORDER, STAGE_CONFIG } from "@/types";
 interface AddProspectModalProps {
   open: boolean;
   onClose: () => void;
-  onCreate: (data: Omit<Prospect, "id" | "createdAt" | "updatedAt" | "notes" | "checklistItems">) => Promise<void>;
+  onCreate: (data: Omit<Prospect, "id" | "createdAt" | "updatedAt" | "notes" | "checklistItems">) => Promise<Prospect>;
 }
 
 export function AddProspectModal({ open, onClose, onCreate }: AddProspectModalProps) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     school: "",
@@ -32,6 +33,7 @@ export function AddProspectModal({ open, onClose, onCreate }: AddProspectModalPr
     if (!form.name.trim() || !form.school.trim()) return;
 
     setLoading(true);
+    setError(null);
     try {
       await onCreate({
         ...form,
@@ -49,6 +51,9 @@ export function AddProspectModal({ open, onClose, onCreate }: AddProspectModalPr
         completed: false,
         completedAt: null,
       });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create prospect");
     } finally {
       setLoading(false);
     }
@@ -217,6 +222,7 @@ export function AddProspectModal({ open, onClose, onCreate }: AddProspectModalPr
                 Create Prospect
               </Button>
             </div>
+            {error && <p className="text-xs font-mono text-danger">{error}</p>}
           </form>
         </div>
       </div>
