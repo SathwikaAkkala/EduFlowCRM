@@ -1,7 +1,6 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import prisma from "../db/prismaClient.js";
-import { DEFAULT_ROLE } from "../utils/roles.js";
 import { loadBackendEnv } from "../utils/load-env.js";
 
 loadBackendEnv();
@@ -33,10 +32,10 @@ function sanitizeUser(userDoc) {
 }
 
 export async function registerUser(payload) {
-    const { name, email, password } = payload;
+    const { name, email, password, role } = payload;
 
-    if (!name || !email || !password) {
-        throw new Error("name, email and password are required");
+    if (!name || !email || !password || !role) {
+        throw new Error("name, email, password and role are required");
     }
 
     const normalizedEmail = String(email).toLowerCase().trim();
@@ -56,7 +55,7 @@ export async function registerUser(payload) {
             name: String(name).trim(),
             email: normalizedEmail,
             password: passwordHash,
-            role: DEFAULT_ROLE
+            role: String(role)
         }
     });
 

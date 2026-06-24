@@ -4,12 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Zap, User, Mail, Lock, ArrowRight, AlertCircle } from "lucide-react";
+import { ROLES, type Role } from "@/lib/roles";
 
 export default function RegisterPage() {
   const { register } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<Role>("agent");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -19,7 +21,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await register(name, email, password);
+      await register(name, email, password, role);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -107,6 +109,24 @@ export default function RegisterPage() {
                   className="w-full rounded-lg border border-ink-5 bg-surface-3 py-2.5 pl-10 pr-4 text-sm text-ink-1 placeholder:text-ink-5 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/30"
                 />
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="register-role" className="font-mono text-xs font-medium uppercase tracking-wider text-ink-3">
+                Role
+              </label>
+              <select
+                id="register-role"
+                value={role}
+                onChange={(e) => setRole(e.target.value as Role)}
+                className="w-full rounded-lg border border-ink-5 bg-surface-3 px-4 py-2.5 text-sm text-ink-1 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/30"
+              >
+                {ROLES.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <button
