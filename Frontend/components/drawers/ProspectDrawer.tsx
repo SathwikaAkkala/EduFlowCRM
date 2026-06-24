@@ -20,7 +20,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { OnboardingChecklist } from "@/components/drawers/OnboardingChecklist";
 import { cn, formatDate, formatRelative } from "@/lib/utils";
 import { STAGE_CONFIG } from "@/types";
-import type { Prospect } from "@/types";
+import type { Prospect, ProspectNote } from "@/types";
 import { readBackendResponse } from "@/lib/api";
 
 interface ProspectDrawerProps {
@@ -30,7 +30,7 @@ interface ProspectDrawerProps {
   onClose: () => void;
   onUpdate: (id: string, data: Partial<Prospect>) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
-  onAddNote: (id: string, content: string) => Promise<void>;
+  onAddNote: (id: string, content: string) => Promise<ProspectNote>;
 }
 
 export function ProspectDrawer({
@@ -53,7 +53,7 @@ export function ProspectDrawer({
 
   useEffect(() => {
     setLocalProspect(prospect);
-  }, [prospect?.id]);
+  }, [prospect]);
 
   useEffect(() => {
     const loadProspect = async () => {
@@ -107,7 +107,12 @@ export function ProspectDrawer({
     setAddingNote(true);
     setNoteError(null);
     try {
-      await onAddNote(localProspect.id, noteText.trim());
+      const note = await onAddNote(localProspect.id, noteText.trim());
+      setLocalProspect((current) =>
+        current
+          ? { ...current, notes: [note, ...(current.notes ?? [])], updatedAt: new Date().toISOString() }
+          : current
+      );
       setNoteText("");
     } catch {
       setNoteError("Failed to add note. Please try again.");

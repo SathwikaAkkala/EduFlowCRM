@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Prospect, Stage } from "@/types";
+import type { Prospect, ProspectNote, Stage } from "@/types";
 
 interface UseProspectsReturn {
   prospects: Prospect[];
@@ -12,7 +12,7 @@ interface UseProspectsReturn {
   moveProspect: (prospectId: string, newStage: Stage) => Promise<void>;
   updateProspect: (prospectId: string, data: Partial<Prospect>) => Promise<void>;
   deleteProspect: (prospectId: string) => Promise<void>;
-  addNote: (prospectId: string, content: string) => Promise<void>;
+  addNote: (prospectId: string, content: string) => Promise<ProspectNote>;
   createProspect: (data: Omit<Prospect, "id" | "createdAt" | "updatedAt" | "notes" | "checklistItems">) => Promise<void>;
 }
 
@@ -107,7 +107,8 @@ export function useProspects(): UseProspectsReturn {
       body: JSON.stringify({ content }),
     });
     if (!res.ok) throw new Error("Failed to add note");
-    const note = await res.json();
+    const payload = await res.json();
+    const note = (payload?.data ?? payload) as ProspectNote;
     setProspects((prev) =>
       prev.map((p) =>
         p.id === prospectId
@@ -115,6 +116,7 @@ export function useProspects(): UseProspectsReturn {
           : p
       )
     );
+    return note;
   }, []);
 
   const createProspect = useCallback(async (

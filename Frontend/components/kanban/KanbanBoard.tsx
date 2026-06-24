@@ -8,6 +8,7 @@ import { ProspectDrawer } from "@/components/drawers/ProspectDrawer";
 import { useDrawer } from "@/hooks/useDrawer";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { STAGE_ORDER, type Stage, type Prospect } from "@/types";
+import type { ProspectNote } from "@/types";
 import { isOverdue, isDueToday } from "@/lib/utils";
 import { PROSPECT_EDIT_ROLES, hasRoleAccess } from "@/lib/roles";
 
@@ -18,7 +19,7 @@ interface KanbanBoardProps {
   moveProspect: (prospectId: string, newStage: Stage) => Promise<void>;
   updateProspect: (prospectId: string, data: Partial<Prospect>) => Promise<void>;
   deleteProspect: (prospectId: string) => Promise<void>;
-  addNote: (prospectId: string, content: string) => Promise<void>;
+  addNote: (prospectId: string, content: string) => Promise<ProspectNote>;
 }
 
 export function KanbanBoard({
@@ -149,9 +150,7 @@ export function KanbanBoard({
           closeDrawer();
           await deleteProspect(id);
         }}
-        onAddNote={async (id, content) => {
-          await addNote(id, content);
-        }}
+        onAddNote={(id, content) => addNote(id, content)}
       />
     </>
   );
