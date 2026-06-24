@@ -7,16 +7,14 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      String   @default("agent")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id               String            @id @default(cuid())
+  name             String
+  email            String            @unique
+  password         String
+  role             String            @default("agent")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
   notificationLogs NotificationLog[]
-  // Prospects owned by this user
   ownedProspects   Prospect[]
 
   @@index([role])
@@ -33,36 +31,34 @@ model Prospect {
   stage            String                @default("Cold")
   lastContactDate  DateTime?
   nextFollowUpDate DateTime?
-  completed        Boolean               @default(false)
-  completedAt      DateTime?
-  deletedAt        DateTime?
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
-
-  // Optional owner relationship: a `User` responsible for this prospect
-  owner            User?                 @relation(fields: [ownerId], references: [id])
+  deletedAt        DateTime?
   ownerId          String?
   lastNotifiedAt   DateTime?
-
-  notes            ProspectNote[]
-  checklistItems   OnboardingChecklist[]
+  completed        Boolean               @default(false)
+  completedAt      DateTime?
   auditLogs        AuditLog[]
+  checklistItems   OnboardingChecklist[]
+  owner            User?                 @relation(fields: [ownerId], references: [id])
+  notes            ProspectNote[]
 
   @@index([stage, createdAt])
   @@index([nextFollowUpDate])
   @@index([deletedAt])
   @@index([completed])
+  @@index([ownerId], map: "Prospect_ownerId_fkey")
 }
 
 model AuditLog {
   id         String   @id @default(cuid())
-  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
   prospectId String
   action     String
   actorId    String
   actorRole  String
   metadata   Json?
   createdAt  DateTime @default(now())
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
 
   @@index([prospectId, createdAt])
   @@index([action, createdAt])
@@ -70,26 +66,26 @@ model AuditLog {
 
 model ProspectNote {
   id         String   @id @default(cuid())
-  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
   prospectId String
   content    String
   createdAt  DateTime @default(now())
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
 
   @@index([prospectId, createdAt])
 }
 
 model OnboardingChecklist {
-  id          String   @id @default(cuid())
-  prospect    Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
   prospectId  String
   stepNumber  Int
   title       String
   description String?
   assignee    String?
-  status      String   @default("todo")
+  status      String    @default("todo")
   dueDate     DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  prospect    Prospect  @relation(fields: [prospectId], references: [id], onDelete: Cascade)
 
   @@unique([prospectId, stepNumber])
   @@index([prospectId, status])
@@ -97,14 +93,14 @@ model OnboardingChecklist {
 
 model NotificationLog {
   id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
-  type      String   @default("notification") // e.g., "overdue_prospects", "milestone", etc.
+  type      String   @default("notification")
   title     String
   message   String
   metadata  Json?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, read, createdAt])
   @@index([type, createdAt])

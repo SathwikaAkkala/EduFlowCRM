@@ -6,13 +6,7 @@ import { checkDatabaseHealth } from "./src/utils/db.health.js";
 const PORT = Number(process.env.PORT) || 5000;
 
 const startServer = async () => {
-    const dbHealth = await checkDatabaseHealth();
-
-    if (dbHealth.ok) {
-        console.log(`[Startup] Database health check passed in ${dbHealth.durationMs}ms`);
-    } else {
-        console.error(`[Startup] Database health check failed after ${dbHealth.durationMs}ms: ${dbHealth.error}`);
-    }
+    let dbHealth = { ok: false };
 
     server.listen(PORT, () => {
         console.log(`Server is Up and Running at PORT ${PORT}`);
@@ -20,19 +14,27 @@ const startServer = async () => {
         // Initialize notification scheduler
         if (process.env.ENABLE_NOTIFICATIONS !== "false") {
             initializeScheduler();
-
-            if (dbHealth.ok) {
-                // Run one check immediately so newly overdue prospects are handled on startup.
-                triggerOverdueCheck().catch((err) => {
-                    console.error("[Scheduler] Startup overdue check failed:", err && err.message ? err.message : err);
-                });
-            } else {
-                console.warn("[Scheduler] Skipping startup overdue check because the database health check failed");
-            }
         } else {
             console.log("[Scheduler] Notifications disabled via ENABLE_NOTIFICATIONS=false");
         }
     });
+
+    dbHealth = await checkDatabaseHealth();
+
+    if (dbHealth.ok) {
+        console.log(`[Startup] Database health check passed in ${dbHealth.durationMs}ms`);
+        if (process.env.ENABLE_NOTIFICATIONS !== "false") {
+            // Run one check immediately so newly overdue prospects are handled on startup.
+            triggerOverdueCheck().catch((err) => {
+                console.error("[Scheduler] Startup overdue check failed:", err && err.message ? err.message : err);
+            });
+        }
+    } else {
+        console.error(`[Startup] Database health check failed after ${dbHealth.durationMs}ms: ${dbHealth.error}`);
+        if (process.env.ENABLE_NOTIFICATIONS !== "false") {
+            console.warn("[Scheduler] Skipping startup overdue check because the database health check failed");
+        }
+    }
 };
 
 startServer().catch((err) => {

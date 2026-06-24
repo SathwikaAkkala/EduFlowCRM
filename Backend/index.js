@@ -21,6 +21,7 @@ if (process.env.SENTRY_DSN) {
 }
 
 const server = express();
+server.set("trust proxy", 1);
 const envOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "")
     .split(",")
     .map((origin) => origin.trim())

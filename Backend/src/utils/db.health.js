@@ -1,6 +1,6 @@
 import prisma from "../db/prismaClient.js";
 
-export async function checkDatabaseHealth(timeoutMs = Number(process.env.DB_HEALTHCHECK_TIMEOUT_MS || 5000)) {
+export async function checkDatabaseHealth(timeoutMs = Number(process.env.DB_HEALTHCHECK_TIMEOUT_MS || 30000)) {
     const startedAt = Date.now();
     let timeoutId;
 
