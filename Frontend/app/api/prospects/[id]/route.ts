@@ -1,13 +1,11 @@
-// app/api/prospects/[id]/route.ts — Prisma-backed single prospect endpoint
 import { NextRequest } from "next/server";
-import prisma from "@/lib/prisma";
-import { buildOnboardingChecklistData } from "@/lib/onboarding";
-import { mapCardToProspect, toFrontendStage } from "@/lib/api";
+import { mapCardToProspect, toBackendStage, toFrontendStage } from "@/lib/api";
 import { requireAuth } from "@/lib/serverAuth";
 import { validateUpdateProspect } from "@/lib/prospectValidation";
 import { jsonWithHeaders } from "@/lib/apiResponse";
 import { applyRateLimit } from "@/lib/rateLimit";
 import { captureException, createRequestId } from "@/lib/logger";
+import { backendProxyRequest } from "@/lib/backendProxy";
 
 function mapNote(note: any) {
   return {
@@ -44,18 +42,13 @@ export async function GET(
   if (!limiter.ok) return jsonWithHeaders({ error: "Too many requests" }, { status: 429 });
 
   try {
-    const prospect = await prisma.prospect.findFirst({
-      where: { id: params.id, deletedAt: null },
-      include: {
-        notes: { orderBy: { createdAt: "desc" } },
-        checklistItems: { orderBy: { stepNumber: "asc" } },
-      },
-    });
-
-    if (!prospect) {
-      return jsonWithHeaders({ error: "Not found" }, { status: 404 });
+    const { response, body } = await backendProxyRequest(`/api/cards/${params.id}`, { method: "GET" });
+    if (!response.ok) {
+      const message = body?.message || body?.error || "Not found";
+      return jsonWithHeaders({ error: message }, { status: response.status });
     }
 
+    const prospect = body.data;
     return jsonWithHeaders({
       ...mapCardToProspect({ ...prospect, stage: toFrontendStage(prospect.stage) }),
       notes: (prospect.notes || []).map(mapNote),
@@ -84,53 +77,28 @@ export async function PATCH(
       return jsonWithHeaders({ error: validated.error }, { status: 400 });
     }
 
-    const updated = await prisma.$transaction(async (tx: any) => {
-      const existing = await tx.prospect.findFirst({
-        where: { id: params.id, deletedAt: null },
-        select: { stage: true },
-      });
-      if (!existing) {
-        throw new Error("NOT_FOUND");
-      }
-
-      const next = await tx.prospect.update({
-        where: { id: params.id },
-        data: validated.data,
-      });
-
-      if (existing.stage !== "Pilot Closed" && next.stage === "Pilot Closed") {
-        await tx.onboardingChecklist.createMany({
-          data: buildOnboardingChecklistData(next.id),
-          skipDuplicates: true,
-        });
-      }
-      const changedStage = typeof validated.data.stage === "string" && validated.data.stage !== existing.stage;
-      if (changedStage) {
-        await tx.auditLog.create({
-          data: {
-            prospectId: params.id,
-            action: "STAGE_CHANGED",
-            actorId: auth.user.id,
-            actorRole: auth.user.role,
-            metadata: { from: existing.stage, to: validated.data.stage },
-          },
-        });
-      }
-      return next;
+    const { response, body: updated } = await backendProxyRequest(`/api/cards/${params.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...validated.data,
+        stage: typeof validated.data.stage === "string" ? toBackendStage(validated.data.stage) : validated.data.stage,
+      }),
     });
 
-    const prospect = await prisma.prospect.findFirst({
-      where: { id: params.id, deletedAt: null },
-      include: {
-        notes: { orderBy: { createdAt: "desc" } },
-        checklistItems: { orderBy: { stepNumber: "asc" } },
-      },
-    });
+    if (!response.ok) {
+      const message = updated?.message || updated?.error || "Failed to update prospect";
+      if (response.status === 404) {
+        return jsonWithHeaders({ error: "Not found" }, { status: 404 });
+      }
+      return jsonWithHeaders({ error: message }, { status: response.status });
+    }
 
+    const prospect = await backendProxyRequest(`/api/cards/${params.id}`, { method: "GET" });
+    const current = prospect.body?.data;
     return jsonWithHeaders({
-      ...mapCardToProspect({ ...updated, stage: toFrontendStage(updated.stage) }),
-      notes: (prospect?.notes || []).map(mapNote),
-      checklistItems: (prospect?.checklistItems || []).map(mapChecklistItem),
+      ...mapCardToProspect({ ...updated.data, stage: toFrontendStage(updated.data.stage) }),
+      notes: (current?.notes || []).map(mapNote),
+      checklistItems: (current?.checklistItems || []).map(mapChecklistItem),
     });
   } catch (err) {
     if (err instanceof Error && err.message === "NOT_FOUND") {
@@ -152,29 +120,13 @@ export async function DELETE(
   if (!limiter.ok) return jsonWithHeaders({ error: "Too many requests" }, { status: 429 });
 
   try {
-    const existing = await prisma.prospect.findFirst({
-      where: { id: params.id, deletedAt: null },
-      select: { id: true },
+    const { response, body } = await backendProxyRequest(`/api/cards/${params.id}`, {
+      method: "DELETE",
     });
-
-    if (!existing) {
-      return jsonWithHeaders({ error: "Not found" }, { status: 404 });
+    if (!response.ok) {
+      const message = body?.message || body?.error || "Failed to delete prospect";
+      return jsonWithHeaders({ error: message }, { status: response.status });
     }
-
-    await prisma.$transaction(async (tx: any) => {
-      await tx.prospect.update({
-        where: { id: params.id },
-        data: { deletedAt: new Date() },
-      });
-      await tx.auditLog.create({
-        data: {
-          prospectId: params.id,
-          action: "PROSPECT_ARCHIVED",
-          actorId: auth.user.id,
-          actorRole: auth.user.role,
-        },
-      });
-    });
     return jsonWithHeaders({ success: true });
   } catch (err) {
     captureException(err, { route: "DELETE /api/prospects/[id]", requestId, userId: auth.user.id, prospectId: params.id });

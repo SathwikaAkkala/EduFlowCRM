@@ -1,11 +1,10 @@
-// app/api/prospects/[id]/notes/route.ts — Prisma-backed notes endpoint
 import { NextRequest } from "next/server";
-import prisma from "@/lib/prisma";
 import { requireAuth } from "@/lib/serverAuth";
 import { cursorQuerySchema, noteInputSchema } from "@/lib/validation/schemas";
 import { jsonWithHeaders } from "@/lib/apiResponse";
 import { applyRateLimit } from "@/lib/rateLimit";
 import { captureException, createRequestId } from "@/lib/logger";
+import { backendProxyRequest } from "@/lib/backendProxy";
 
 export async function GET(
   req: NextRequest,
@@ -25,32 +24,28 @@ export async function GET(
     if (!parsedQuery.success) {
       return jsonWithHeaders({ error: parsedQuery.error.issues[0]?.message ?? "Invalid query" }, { status: 400 });
     }
-    const { cursor, limit } = parsedQuery.data;
-    const prospect = await prisma.prospect.findFirst({
-      where: { id: params.id, deletedAt: null },
-      select: { id: true },
-    });
-    if (!prospect) return jsonWithHeaders({ error: "Not found" }, { status: 404 });
+    const { limit, cursor } = parsedQuery.data;
+    const { response, body } = await backendProxyRequest(
+      `/api/cards/${params.id}/notes?page=1&limit=${limit}&cursor=${cursor ?? ""}`,
+      { method: "GET" }
+    );
+    if (!response.ok) {
+      const message = body?.message || body?.error || "Failed to fetch notes";
+      return jsonWithHeaders({ error: message }, { status: response.status });
+    }
 
-    const notes = await prisma.prospectNote.findMany({
-      where: { prospectId: params.id },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      take: limit + 1,
-    });
-    const hasMore = notes.length > limit;
-    const page = notes.slice(0, limit);
+    const notes = Array.isArray(body?.data) ? body.data : [];
 
     return jsonWithHeaders({
-      data: page.map((note: { id: string; prospectId: string; content: string; createdAt: string | Date }) => ({
+      data: notes.map((note: { id: string; prospectId: string; content: string; createdAt: string | Date }) => ({
         id: note.id,
         prospectId: note.prospectId,
         content: note.content,
         createdAt: note.createdAt,
       })),
       pagination: {
-        nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
-        hasMore,
+        nextCursor: null,
+        hasMore: false,
       },
     });
   } catch (err) {
@@ -75,44 +70,17 @@ export async function POST(
       return jsonWithHeaders({ error: parsed.error.issues[0]?.message ?? "Invalid payload" }, { status: 400 });
     }
     const normalizedContent = parsed.data.content;
-
-    const prospect = await prisma.prospect.findFirst({
-      where: { id: params.id, deletedAt: null },
-      select: { id: true },
+    const { response, body } = await backendProxyRequest(`/api/cards/${params.id}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ content: normalizedContent }),
     });
 
-    if (!prospect) {
-      return jsonWithHeaders({ error: "Not found" }, { status: 404 });
+    if (!response.ok) {
+      const message = body?.message || body?.error || "Failed to add note";
+      return jsonWithHeaders({ error: message }, { status: response.status });
     }
 
-    const note = await prisma.$transaction(async (tx: any) => {
-      const created = await tx.prospectNote.create({
-        data: {
-          prospectId: params.id,
-          content: normalizedContent,
-        },
-      });
-      await tx.auditLog.create({
-        data: {
-          prospectId: params.id,
-          action: "NOTE_ADDED",
-          actorId: auth.user.id,
-          actorRole: auth.user.role,
-          metadata: { noteId: created.id },
-        },
-      });
-      return created;
-    });
-
-    return jsonWithHeaders(
-      {
-        id: note.id,
-        prospectId: note.prospectId,
-        content: note.content,
-        createdAt: note.createdAt,
-      },
-      { status: 201 }
-    );
+    return jsonWithHeaders(body, { status: 201 });
   } catch (err) {
     captureException(err, { route: "POST /api/prospects/[id]/notes", requestId, userId: auth.user.id, prospectId: params.id });
     return jsonWithHeaders({ error: "Failed to add note" }, { status: 500 });

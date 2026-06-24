@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { TrendingUp, Users, AlertCircle, CheckCircle } from "lucide-react";
 import { STAGE_CONFIG, STAGE_ORDER, type Stage } from "@/types";
 import { cn } from "@/lib/utils";
+import { readBackendResponse } from "@/lib/api";
 
 interface StageStats {
   stage: Stage;
@@ -28,9 +29,9 @@ export function AnalyticsDashboard() {
 
   useEffect(() => {
     fetch("/api/analytics")
-      .then((r) => {
+      .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
+        return readBackendResponse<Stats>(r);
       })
       .then((d) => {
         // Validate the response has the required shape

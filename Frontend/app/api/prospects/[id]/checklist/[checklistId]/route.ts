@@ -1,7 +1,6 @@
-// app/api/prospects/[id]/checklist/[checklistId]/route.ts — Prisma-backed checklist endpoint
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { requireAuth } from "@/lib/serverAuth";
+import { backendProxyRequest } from "@/lib/backendProxy";
 
 export async function PATCH(
   req: NextRequest,
@@ -15,82 +14,30 @@ export async function PATCH(
     if (status !== "TODO" && status !== "DONE") {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
-
-    const item = await prisma.onboardingChecklist.findUnique({
-      where: { id: params.checklistId },
-      include: {
-        prospect: {
-          select: {
-            id: true,
-            deletedAt: true,
-          },
-        },
-      },
+    const { response, body } = await backendProxyRequest(`/api/checklist/${params.checklistId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: status === "DONE" ? "done" : "todo" }),
     });
 
-    if (!item || item.prospectId !== params.id || item.prospect.deletedAt) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!response.ok) {
+      const message = body?.message || body?.error || "Failed to update";
+      return NextResponse.json({ error: message }, { status: response.status });
     }
 
-    const updated = await prisma.$transaction(async (tx: any) => {
-      // Update the checklist item
-      const checklistItem = await tx.onboardingChecklist.update({
-        where: { id: params.checklistId },
-        data: { status: status === "DONE" ? "done" : "todo" },
-      });
-
-      // Check if all checklist items are now completed
-      const allItems = await tx.onboardingChecklist.findMany({
-        where: { prospectId: params.id },
-        select: { status: true },
-      });
-
-      const allCompleted =
-        allItems.length > 0 && allItems.every((i: { status: string }) => i.status === "done");
-
-      if (allCompleted) {
-        // Mark prospect as completed
-        await tx.prospect.update({
-          where: { id: params.id },
-          data: {
-            completed: true,
-            completedAt: new Date(),
-          },
-        });
-      } else {
-        // Reset completion if not all items are done
-        await tx.prospect.update({
-          where: { id: params.id },
-          data: {
-            completed: false,
-            completedAt: null,
-          },
-        });
-      }
-
-      return checklistItem;
-    });
-
-    // Get updated completion status
-    const prospect = await prisma.prospect.findUnique({
-      where: { id: params.id },
-      select: {
-        completed: true,
-        completedAt: true,
-      },
-    });
+    const prospectRes = await backendProxyRequest(`/api/cards/${params.id}`, { method: "GET" });
+    const prospect = prospectRes.body?.data;
 
     return NextResponse.json({
-      id: updated.id,
-      prospectId: updated.prospectId,
-      stepNumber: updated.stepNumber,
-      title: updated.title,
-      description: updated.description || "",
-      assignee: updated.assignee || "",
-      status: updated.status === "done" ? "DONE" : "TODO",
-      dueDate: updated.dueDate || null,
-      createdAt: updated.createdAt,
-      updatedAt: updated.updatedAt || updated.createdAt,
+      id: body.data.id,
+      prospectId: body.data.prospectId,
+      stepNumber: body.data.stepNumber,
+      title: body.data.title,
+      description: body.data.description || "",
+      assignee: body.data.assignee || "",
+      status: body.data.status === "done" ? "DONE" : "TODO",
+      dueDate: body.data.dueDate || null,
+      createdAt: body.data.createdAt,
+      updatedAt: body.data.updatedAt || body.data.createdAt,
       prospectCompletion: prospect,
     });
   } catch (err) {

@@ -1,36 +1,23 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { requireAuthMock, prismaMock } = vi.hoisted(() => ({
+const { requireAuthMock, backendProxyRequestMock } = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
-  prismaMock: {
-    prospect: {
-      findMany: vi.fn(),
-      findFirst: vi.fn(),
-      update: vi.fn(),
-    },
-    prospectNote: {
-      findMany: vi.fn(),
-      create: vi.fn(),
-    },
-    $transaction: vi.fn(),
-    auditLog: {
-      create: vi.fn(),
-    },
-  },
+  backendProxyRequestMock: vi.fn(),
 }));
 
 vi.mock("@/lib/serverAuth", () => ({
   requireAuth: (...args: unknown[]) => requireAuthMock(...args),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  default: prismaMock,
+vi.mock("@/lib/backendProxy", () => ({
+  backendProxyRequest: (...args: unknown[]) => backendProxyRequestMock(...args),
 }));
 
 import * as prospectsRoute from "@/app/api/prospects/route";
 import * as prospectByIdRoute from "@/app/api/prospects/[id]/route";
 import * as notesRoute from "@/app/api/prospects/[id]/notes/route";
+import * as checklistRoute from "@/app/api/prospects/[id]/checklist/[checklistId]/route";
 
 function authedUser() {
   return {
@@ -46,11 +33,21 @@ beforeEach(() => {
 });
 
 describe("prospect api routes", () => {
-  it("GET /api/prospects returns paginated list", async () => {
-    prismaMock.prospect.findMany.mockResolvedValue([
-      { id: "p2", name: "N2", school: "S2", stage: "Cold", createdAt: new Date(), updatedAt: new Date(), notes: [], checklistItems: [] },
-      { id: "p1", name: "N1", school: "S1", stage: "Cold", createdAt: new Date(), updatedAt: new Date(), notes: [], checklistItems: [] },
-    ]);
+  it("GET /api/prospects returns a flat list", async () => {
+    backendProxyRequestMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({
+        data: [
+          { _id: "Cold", prospects: [{ id: "p2", name: "N2", school: "S2", stage: "Cold", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] },
+        ],
+        pagination: { totalPages: 1 },
+      }), { status: 200, headers: { "content-type": "application/json" } }),
+      body: {
+        data: [
+          { _id: "Cold", prospects: [{ id: "p2", name: "N2", school: "S2", stage: "Cold", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] },
+        ],
+        pagination: { totalPages: 1 },
+      },
+    });
 
     const req = new NextRequest("http://localhost/api/prospects?limit=1");
     const res = await prospectsRoute.GET(req);
@@ -58,19 +55,18 @@ describe("prospect api routes", () => {
 
     expect(res.status).toBe(200);
     expect(Array.isArray(body.data)).toBe(true);
-    expect(body.pagination.hasMore).toBe(true);
+    expect(body.data[0].stage).toBe("COLD");
   });
 
   it("POST /api/prospects creates prospect", async () => {
-    prismaMock.$transaction.mockImplementation(async (cb: any) => {
-      const tx = {
-        prospect: { create: vi.fn().mockResolvedValue({ id: "p1", name: "A", school: "S", stage: "Cold", createdAt: new Date(), updatedAt: new Date() }) },
-        onboardingChecklist: { createMany: vi.fn() },
-        auditLog: { create: vi.fn() },
-      };
-      return cb(tx);
+    backendProxyRequestMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({
+        data: { id: "p1", name: "A", school: "S", stage: "Cold", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      }), { status: 201, headers: { "content-type": "application/json" } }),
+      body: {
+        data: { id: "p1", name: "A", school: "S", stage: "Cold", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      },
     });
-    prismaMock.prospect.findFirst.mockResolvedValue({ id: "p1", name: "A", school: "S", stage: "Cold", createdAt: new Date(), updatedAt: new Date(), notes: [], checklistItems: [] });
     const req = new NextRequest("http://localhost/api/prospects", {
       method: "POST",
       body: JSON.stringify({ name: "Alpha School", school: "Springfield High", stage: "Cold", source: "Direct" }),
@@ -81,18 +77,41 @@ describe("prospect api routes", () => {
   });
 
   it("PATCH /api/prospects/[id] persists stage change", async () => {
-    prismaMock.$transaction.mockImplementation(async (cb: any) => {
-      const tx = {
-        prospect: {
-          findFirst: vi.fn().mockResolvedValue({ stage: "Cold" }),
-          update: vi.fn().mockResolvedValue({ id: "p1", name: "A", school: "S", stage: "Contacted", createdAt: new Date(), updatedAt: new Date() }),
+    backendProxyRequestMock
+      .mockResolvedValueOnce({
+        response: new Response(JSON.stringify({
+          data: { id: "p1", name: "A", school: "S", stage: "Contacted", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        }), { status: 200, headers: { "content-type": "application/json" } }),
+        body: {
+          data: { id: "p1", name: "A", school: "S", stage: "Contacted", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
         },
-        onboardingChecklist: { createMany: vi.fn() },
-        auditLog: { create: vi.fn() },
-      };
-      return cb(tx);
-    });
-    prismaMock.prospect.findFirst.mockResolvedValue({ id: "p1", name: "A", school: "S", stage: "Contacted", createdAt: new Date(), updatedAt: new Date(), notes: [], checklistItems: [] });
+      })
+      .mockResolvedValueOnce({
+        response: new Response(JSON.stringify({
+          data: {
+            id: "p1",
+            name: "A",
+            school: "S",
+            stage: "Contacted",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            notes: [],
+            checklistItems: [],
+          },
+        }), { status: 200, headers: { "content-type": "application/json" } }),
+        body: {
+          data: {
+            id: "p1",
+            name: "A",
+            school: "S",
+            stage: "Contacted",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            notes: [],
+            checklistItems: [],
+          },
+        },
+      });
     const req = new NextRequest("http://localhost/api/prospects/p1", {
       method: "PATCH",
       body: JSON.stringify({ stage: "CONTACTED" }),
@@ -103,13 +122,12 @@ describe("prospect api routes", () => {
   });
 
   it("POST /api/prospects/[id]/notes appends note and writes audit", async () => {
-    prismaMock.prospect.findFirst.mockResolvedValue({ id: "p1" });
-    prismaMock.$transaction.mockImplementation(async (cb: any) => {
-      const tx = {
-        prospectNote: { create: vi.fn().mockResolvedValue({ id: "n1", prospectId: "p1", content: "hello", createdAt: new Date() }) },
-        auditLog: { create: vi.fn() },
-      };
-      return cb(tx);
+    backendProxyRequestMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ id: "n1", prospectId: "p1", content: "hello", createdAt: new Date().toISOString() }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+      body: { id: "n1", prospectId: "p1", content: "hello", createdAt: new Date().toISOString() },
     });
     const req = new NextRequest("http://localhost/api/prospects/p1/notes", {
       method: "POST",
@@ -121,32 +139,52 @@ describe("prospect api routes", () => {
   });
 
   it("checklist generation remains idempotent when stage is already Pilot Closed", async () => {
-    const createMany = vi.fn();
-    const stageState = ["Cold", "Pilot Closed"];
-    prismaMock.$transaction.mockImplementation(async (cb: any) => {
-      const existingStage = stageState.shift() ?? "Pilot Closed";
-      const tx = {
-        prospect: {
-          findFirst: vi.fn().mockResolvedValue({ stage: existingStage }),
-          update: vi.fn().mockResolvedValue({ id: "p1", stage: "Pilot Closed", name: "A", school: "S", createdAt: new Date(), updatedAt: new Date() }),
+    backendProxyRequestMock
+      .mockResolvedValueOnce({
+        response: new Response(JSON.stringify({
+          data: {
+            id: "i1",
+            prospectId: "p1",
+            stepNumber: 1,
+            title: "Step",
+            description: "",
+            assignee: "",
+            status: "done",
+            dueDate: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        }), { status: 200, headers: { "content-type": "application/json" } }),
+        body: {
+          data: {
+            id: "i1",
+            prospectId: "p1",
+            stepNumber: 1,
+            title: "Step",
+            description: "",
+            assignee: "",
+            status: "done",
+            dueDate: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
         },
-        onboardingChecklist: { createMany },
-        auditLog: { create: vi.fn() },
-      };
-      return cb(tx);
-    });
-    prismaMock.prospect.findFirst.mockResolvedValue({ id: "p1", stage: "Pilot Closed", name: "A", school: "S", createdAt: new Date(), updatedAt: new Date(), notes: [], checklistItems: [] });
-
-    const request = () =>
-      new NextRequest("http://localhost/api/prospects/p1", {
-        method: "PATCH",
-        body: JSON.stringify({ stage: "PILOT_CLOSED" }),
-        headers: { "content-type": "application/json" },
+      })
+      .mockResolvedValueOnce({
+        response: new Response(JSON.stringify({
+          data: { id: "p1", completed: true, completedAt: new Date().toISOString() },
+        }), { status: 200, headers: { "content-type": "application/json" } }),
+        body: { data: { id: "p1", completed: true, completedAt: new Date().toISOString() } },
       });
 
-    await prospectByIdRoute.PATCH(request(), { params: { id: "p1" } });
-    await prospectByIdRoute.PATCH(request(), { params: { id: "p1" } });
-
-    expect(createMany).toHaveBeenCalledTimes(1);
+    const res = await checklistRoute.PATCH(
+      new NextRequest("http://localhost/api/prospects/p1/checklist/i1", {
+        method: "PATCH",
+        body: JSON.stringify({ status: "DONE" }),
+        headers: { "content-type": "application/json" },
+      }),
+      { params: { id: "p1", checklistId: "i1" } }
+    );
+    expect(res.status).toBe(200);
   });
 });

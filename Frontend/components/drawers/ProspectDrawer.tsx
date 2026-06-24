@@ -21,6 +21,7 @@ import { OnboardingChecklist } from "@/components/drawers/OnboardingChecklist";
 import { cn, formatDate, formatRelative } from "@/lib/utils";
 import { STAGE_CONFIG } from "@/types";
 import type { Prospect } from "@/types";
+import { readBackendResponse } from "@/lib/api";
 
 interface ProspectDrawerProps {
   open: boolean;
@@ -52,7 +53,27 @@ export function ProspectDrawer({
 
   useEffect(() => {
     setLocalProspect(prospect);
-  }, [prospect]);
+  }, [prospect?.id]);
+
+  useEffect(() => {
+    const loadProspect = async () => {
+      if (!open || !prospect?.id) return;
+
+      try {
+        const res = await fetch(`/api/prospects/${prospect.id}`);
+        if (!res.ok) return;
+
+        const data = await readBackendResponse<Prospect>(res);
+        if (data && data.id) {
+          setLocalProspect(data);
+        }
+      } catch {
+        // Keep the optimistic/list version if the detail fetch fails.
+      }
+    };
+
+    loadProspect();
+  }, [open, prospect?.id]);
 
   useEffect(() => {
     if (!open) {

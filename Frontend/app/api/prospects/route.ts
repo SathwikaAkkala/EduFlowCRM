@@ -1,8 +1,5 @@
-// app/api/prospects/route.ts — Prisma-backed prospect collection endpoint
 import { NextRequest } from "next/server";
-import prisma from "@/lib/prisma";
-import { buildOnboardingChecklistData } from "@/lib/onboarding";
-import { mapCardToProspect, toFrontendStage } from "@/lib/api";
+import { mapCardToProspect, toBackendStage, toFrontendStage } from "@/lib/api";
 import { requireAuth } from "@/lib/serverAuth";
 import { validateCreateProspect } from "@/lib/prospectValidation";
 import { cursorQuerySchema, prospectFieldsSchema } from "@/lib/validation/schemas";
@@ -10,30 +7,7 @@ import { jsonWithHeaders } from "@/lib/apiResponse";
 import { applyRateLimit } from "@/lib/rateLimit";
 import { captureException, createRequestId, log } from "@/lib/logger";
 import { PROSPECT_EDIT_ROLES, PROSPECT_VIEW_ROLES } from "@/lib/roles";
-
-function mapNote(note: any) {
-  return {
-    id: note.id,
-    prospectId: note.prospectId,
-    content: note.content,
-    createdAt: note.createdAt,
-  };
-}
-
-function mapChecklistItem(item: any) {
-  return {
-    id: item.id,
-    prospectId: item.prospectId,
-    stepNumber: item.stepNumber,
-    title: item.title,
-    description: item.description || "",
-    assignee: item.assignee || "",
-    status: item.status === "done" ? "DONE" : "TODO",
-    dueDate: item.dueDate || null,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt || item.createdAt,
-  };
-}
+import { backendProxyRequest } from "@/lib/backendProxy";
 
 export async function GET(req: NextRequest) {
   const requestId = createRequestId();
@@ -53,40 +27,45 @@ export async function GET(req: NextRequest) {
       return jsonWithHeaders({ error: parsedQuery.error.issues[0]?.message ?? "Invalid query" }, { status: 400 });
     }
     const fieldsMode = prospectFieldsSchema.parse(req.nextUrl.searchParams.get("fields") ?? "full");
-    const { cursor, limit } = parsedQuery.data;
+    const { limit } = parsedQuery.data;
+    void parsedQuery.data.cursor;
 
-    const includeRelations = fieldsMode === "full";
-    const prospects = await prisma.prospect.findMany({
-      where: { deletedAt: null },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      take: limit + 1,
-      ...(includeRelations
-        ? {
-            include: {
-              notes: { orderBy: { createdAt: "desc" }, take: 10 },
-              checklistItems: { orderBy: { stepNumber: "asc" } },
-            },
-          }
-        : {}),
-    });
+    const pageSize = Math.max(limit, 100);
+    const groupedCards: any[] = [];
+    let page = 1;
+    let totalPages = 1;
 
-    const hasMore = prospects.length > limit;
-    const page = prospects.slice(0, limit);
-    const data = page.map((prospect: any) => {
-        const mapped = mapCardToProspect({ ...prospect, stage: toFrontendStage(prospect.stage) });
-        return {
-          ...mapped,
-          notes: includeRelations ? (prospect.notes || []).map(mapNote) : [],
-          checklistItems: includeRelations ? (prospect.checklistItems || []).map(mapChecklistItem) : [],
-        };
+    while (page <= totalPages) {
+      const { response, body } = await backendProxyRequest(`/api/cards?page=${page}&limit=${pageSize}`, {
+        method: "GET",
       });
+
+      if (!response.ok) {
+        const message = body?.message || body?.error || "Failed to fetch prospects";
+        return jsonWithHeaders({ error: message }, { status: response.status });
+      }
+
+      groupedCards.push(...(Array.isArray(body?.data) ? body.data : []));
+      totalPages = Number(body?.pagination?.totalPages || totalPages);
+      page += 1;
+    }
+
+    const data = groupedCards.flatMap((group: any) =>
+      (group.prospects || []).map((card: any) =>
+        mapCardToProspect({ ...card, stage: toFrontendStage(card.stage) })
+      )
+    );
+    data.sort(
+      (left: any, right: any) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime() ||
+        String(right.id).localeCompare(String(left.id))
+    );
     log("info", "Prospects fetched", { requestId, userId: auth.user.id, count: data.length, fieldsMode });
     return jsonWithHeaders({
       data,
       pagination: {
-        nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
-        hasMore,
+        nextCursor: null,
+        hasMore: false,
       },
     });
   } catch (err) {
@@ -116,54 +95,21 @@ export async function POST(req: NextRequest) {
       return jsonWithHeaders({ error: validated.error }, { status: 400 });
     }
 
-    const created = await prisma.$transaction(async (tx: any) => {
-      const prospect = await tx.prospect.create({
-        data: {
-          name: validated.data.name,
-          school: validated.data.school,
-          role: validated.data.role || null,
-          email: validated.data.email,
-          phone: validated.data.phone || null,
-          source: validated.data.source,
-          stage: validated.data.stage,
-          lastContactDate: validated.data.lastContactDate,
-          nextFollowUpDate: validated.data.nextFollowUpDate,
-        },
-      });
-
-      if (prospect.stage === "Pilot Closed") {
-        await tx.onboardingChecklist.createMany({
-          data: buildOnboardingChecklistData(prospect.id),
-          skipDuplicates: true,
-        });
-      }
-      await tx.auditLog.create({
-        data: {
-          prospectId: prospect.id,
-          action: "PROSPECT_CREATED",
-          actorId: auth.user.id,
-          actorRole: auth.user.role,
-          metadata: { stage: prospect.stage },
-        },
-      });
-
-      return prospect;
+    const { response, body: created } = await backendProxyRequest("/api/cards", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validated.data,
+        stage: validated.data.stage ? toBackendStage(validated.data.stage) : undefined,
+      }),
     });
 
-    const prospect = mapCardToProspect({ ...created, stage: toFrontendStage(created.stage) });
-    const fullProspect = await prisma.prospect.findFirst({
-      where: { id: created.id, deletedAt: null },
-      include: {
-        notes: { orderBy: { createdAt: "desc" } },
-        checklistItems: { orderBy: { stepNumber: "asc" } },
-      },
-    });
+    if (!response.ok) {
+      const message = created?.message || created?.error || "Failed to create prospect";
+      return jsonWithHeaders({ error: message }, { status: response.status });
+    }
 
-    return jsonWithHeaders({
-      ...prospect,
-      notes: (fullProspect?.notes || []).map(mapNote),
-      checklistItems: (fullProspect?.checklistItems || []).map(mapChecklistItem),
-    }, { status: 201 });
+    const prospect = mapCardToProspect({ ...created.data, stage: toFrontendStage(created.data.stage) });
+    return jsonWithHeaders({ ...prospect, notes: [], checklistItems: [] }, { status: 201 });
   } catch (err) {
     captureException(err, { route: "POST /api/prospects", requestId, userId: auth.user.id });
     return jsonWithHeaders({ error: "Failed to create prospect" }, { status: 500 });
