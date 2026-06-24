@@ -27,7 +27,7 @@ const envOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "")
     .filter(Boolean);
 const allowedOrigins = [
     "http://localhost:3000",
-    "https://edu-flow-crm-f74z.vercel.app",
+    "https://edu-flow-68mpx33t9-f30.vercel.app",
     ...envOrigins,
 ];
 
