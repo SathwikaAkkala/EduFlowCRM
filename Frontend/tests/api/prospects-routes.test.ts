@@ -37,13 +37,13 @@ describe("prospect api routes", () => {
     backendProxyRequestMock.mockResolvedValueOnce({
       response: new Response(JSON.stringify({
         data: [
-          { _id: "Cold", prospects: [{ id: "p2", name: "N2", school: "S2", stage: "Cold", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] },
+          { _id: "Cold", prospects: [{ id: "p2", name: "N2", school: "S2", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] },
         ],
         pagination: { totalPages: 1 },
       }), { status: 200, headers: { "content-type": "application/json" } }),
       body: {
         data: [
-          { _id: "Cold", prospects: [{ id: "p2", name: "N2", school: "S2", stage: "Cold", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] },
+          { _id: "Cold", prospects: [{ id: "p2", name: "N2", school: "S2", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] },
         ],
         pagination: { totalPages: 1 },
       },

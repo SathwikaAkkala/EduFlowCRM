@@ -51,6 +51,7 @@ export default class Repositories {
                 email: card.email,
                 phone: card.phone,
                 source: card.source,
+                stage: card.stage,
                 lastContactDate: card.lastContactDate,
                 nextFollowUpDate: card.nextFollowUpDate,
                 createdAt: card.createdAt

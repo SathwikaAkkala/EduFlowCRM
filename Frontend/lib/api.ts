@@ -109,7 +109,7 @@ export function mapCardToProspect(card: any) {
     email:            card.email || "",
     phone:            card.phone || "",
     source:           card.source || "Direct",
-    stage:            toFrontendStage(card.stage),
+    stage:            toFrontendStage(card.stage ?? card._id),
     lastContactDate:  card.lastContactDate || null,
     nextFollowUpDate: card.nextFollowUpDate || null,
     completed:        card.completed || false,

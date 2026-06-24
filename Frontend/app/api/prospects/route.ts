@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
 
     const data = groupedCards.flatMap((group: any) =>
       (group.prospects || []).map((card: any) =>
-        mapCardToProspect({ ...card, stage: toFrontendStage(card.stage) })
+        mapCardToProspect({ ...card, stage: card.stage ?? group._id })
       )
     );
     data.sort(
