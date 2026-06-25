@@ -16,8 +16,9 @@ interface ProspectCardProps {
 }
 
 export function ProspectCard({ prospect, index, onClick }: ProspectCardProps) {
-  const overdue = isOverdue(prospect.nextFollowUpDate);
-  const dueToday = isDueToday(prospect.nextFollowUpDate);
+  const isClosed = prospect.stage === "PILOT_CLOSED";
+  const overdue = !isClosed && !prospect.completed && isOverdue(prospect.nextFollowUpDate);
+  const dueToday = !isClosed && !prospect.completed && isDueToday(prospect.nextFollowUpDate);
   const sinceDays = daysSince(prospect.lastContactDate);
 
   return (
@@ -47,7 +48,7 @@ export function ProspectCard({ prospect, index, onClick }: ProspectCardProps) {
           )}
 
           {/* Overdue badge */}
-          {overdue && !prospect.completed && (
+          {overdue && (
             <span className="absolute -top-2 -right-2 flex items-center gap-1 bg-danger text-white text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded z-10">
               <AlertCircle className="w-2.5 h-2.5" />
               Overdue
