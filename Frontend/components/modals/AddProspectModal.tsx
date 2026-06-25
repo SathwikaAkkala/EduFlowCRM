@@ -43,6 +43,8 @@ export function AddProspectModal({ open, onClose, onCreate }: AddProspectModalPr
         phone: form.phone.trim() || "",
         source: form.source,
         stage: form.stage,
+        completed: form.completed,
+        completedAt: form.completedAt,
         lastContactDate: null,
         nextFollowUpDate: null,
       });
