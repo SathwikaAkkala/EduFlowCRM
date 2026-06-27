@@ -1,5 +1,7 @@
 import prisma from "../db/prismaClient.js";
 
+const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
 export default class AnalyticsRepository {
     
     async getStageBreakdown() {
@@ -24,10 +26,14 @@ export default class AnalyticsRepository {
      * Count of prospects with overdue follow-ups
      */
     async getOverdueCount() {
+        const todayStart = startOfDay(new Date());
+
         return prisma.prospect.count({
             where: {
-                nextFollowUpDate: { lt: new Date() },
-                stage: { not: "Pilot Closed" }
+                deletedAt: null,
+                completed: false,
+                stage: { not: "Pilot Closed" },
+                nextFollowUpDate: { lt: todayStart }
             }
         });
     }
