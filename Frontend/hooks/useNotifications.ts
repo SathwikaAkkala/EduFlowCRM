@@ -30,13 +30,17 @@ export function useNotifications() {
     try {
       setLoading(true);
       setError(null);
-      const response = (await apiCall("/notifications", {
+      const res = await fetch("/api/notifications", {
         method: "GET",
-      })) as NotificationsResponse;
+        cache: "no-store",
+      });
+      const response = (await res.json()) as NotificationsResponse;
 
-      if (response.success) {
+      if (res.ok && response.success) {
         setNotifications(response.data || []);
         setUnreadCount(response.unreadCount || 0);
+      } else {
+        throw new Error(response?.error || "Unable to fetch notifications");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to fetch notifications";
@@ -50,15 +54,18 @@ export function useNotifications() {
   // Mark notification as read
   const markAsRead = useCallback(async (notificationId: string) => {
     try {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+
       const response = (await apiCall(`/notifications/${notificationId}/read`, {
         method: "PATCH",
       })) as NotificationsResponse;
 
-      if (response.success) {
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
-        );
-        setUnreadCount((prev) => Math.max(0, prev - 1));
+      if (!response.success) {
+        // Keep the optimistic UI change even if the backend log entry doesn't exist.
+        console.warn("Notification read update returned a non-success response");
       }
     } catch (err) {
       console.error("Error marking notification as read:", err);
@@ -89,7 +96,7 @@ export function useNotifications() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [fetchNotifications, fetchUnreadCount]);
+  }, [fetchNotifications]);
 
   return {
     notifications,
