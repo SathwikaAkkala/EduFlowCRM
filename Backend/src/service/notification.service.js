@@ -322,9 +322,132 @@ export const getUnreadCount = async (userId) => {
   }
 };
 
+export const syncBellNotificationsForUser = async (user) => {
+  try {
+    if (!user?.id) {
+      return { success: false, error: "Missing user" };
+    }
+
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+    const isAdmin = user.role === "admin";
+    const prospectScope = isAdmin ? {} : { ownerId: user.id };
+
+    const overdueProspects = await prisma.prospect.findMany({
+      where: {
+        deletedAt: null,
+        stage: { not: "Pilot Closed" },
+        nextFollowUpDate: { lt: todayStart },
+        ...prospectScope,
+      },
+      select: {
+        id: true,
+        name: true,
+        school: true,
+        stage: true,
+        nextFollowUpDate: true,
+        ownerId: true,
+      },
+    });
+
+    const dueTodayProspects = await prisma.prospect.findMany({
+      where: {
+        deletedAt: null,
+        stage: { not: "Pilot Closed" },
+        nextFollowUpDate: {
+          gte: todayStart,
+          lt: tomorrowStart,
+        },
+        ...prospectScope,
+      },
+      select: {
+        id: true,
+        name: true,
+        school: true,
+        stage: true,
+        nextFollowUpDate: true,
+        ownerId: true,
+      },
+    });
+
+    const ensureSummary = async (type, prospects, title, message) => {
+      if (prospects.length === 0) return null;
+
+      const existing = await prisma.notificationLog.findFirst({
+        where: {
+          userId: user.id,
+          type,
+          createdAt: { gte: todayStart },
+        },
+      });
+
+      const metadata = {
+        prospectCount: prospects.length,
+        prospectIds: prospects.map((p) => p.id),
+      };
+
+      if (existing) {
+        return prisma.notificationLog.update({
+          where: { id: existing.id },
+          data: {
+            title,
+            message,
+            metadata,
+            read: false,
+          },
+        });
+      }
+
+      return prisma.notificationLog.create({
+        data: {
+          userId: user.id,
+          type,
+          title,
+          message,
+          metadata,
+          read: false,
+        },
+      });
+    };
+
+    const results = await Promise.all([
+      ensureSummary(
+        "overdue_prospects",
+        overdueProspects,
+        `${overdueProspects.length} Overdue Follow-ups`,
+        isAdmin
+          ? `There are ${overdueProspects.length} prospect(s) with overdue follow-up dates.`
+          : `You have ${overdueProspects.length} prospect(s) with overdue follow-up dates.`
+      ),
+      ensureSummary(
+        "due_today",
+        dueTodayProspects,
+        `${dueTodayProspects.length} Due Today Follow-ups`,
+        isAdmin
+          ? `There are ${dueTodayProspects.length} prospect(s) due for follow-up today.`
+          : `You have ${dueTodayProspects.length} prospect(s) due for follow-up today.`
+      ),
+    ]);
+
+    return {
+      success: true,
+      overdueProspects: overdueProspects.length,
+      dueTodayProspects: dueTodayProspects.length,
+      created: results.filter(Boolean).length,
+    };
+  } catch (error) {
+    console.error("[Notification Service] Error syncing bell notifications:", error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 export default {
   checkAndNotifyOverdueProspects,
   getUserNotifications,
   markNotificationAsRead,
   getUnreadCount,
+  syncBellNotificationsForUser,
 };
