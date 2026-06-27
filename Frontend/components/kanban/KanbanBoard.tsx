@@ -119,9 +119,6 @@ export function KanbanBoard({
           overdueCount={overdueProspects.length}
           dueTodayCount={dueTodayProspects.length}
           totalCount={prospects.length}
-          overdueProspects={overdueProspects}
-          dueTodayProspects={dueTodayProspects}
-          onProspectClick={handleCardClick}
         />
 
         <div className="flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4 touch-pan-x overscroll-x-contain sm:px-6 sm:pb-6">
