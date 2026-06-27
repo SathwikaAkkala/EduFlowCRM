@@ -43,7 +43,7 @@ export function NotificationBell() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 z-50 mt-2 w-80 rounded-lg border border-gray-200 bg-white shadow-xl">
+        <div className="fixed right-4 top-16 z-50 w-[calc(100vw-2rem)] max-w-80 rounded-lg border border-gray-200 bg-white shadow-xl sm:right-6 md:top-20">
           <div className="flex items-center justify-between border-b border-gray-200 p-4">
             <h3 className="font-semibold text-gray-900">Notifications</h3>
             <button
